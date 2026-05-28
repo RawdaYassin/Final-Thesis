@@ -1,0 +1,288 @@
+% =====================================================================
+% CHAPTER 4: SYSTEM ARCHITECTURE AND DESIGN
+% =====================================================================
+\chapter{System Architecture and Design}
+\label{ch:architecture}
+
+\section{High-Level System Architecture}
+
+The proposed financial fraud detection system follows a three-stage architecture with three parallel detection pipelines: (1)~Data Ingestion and Graph Construction, (2)~Multi-Paradigm Model Training and Inference, and (3)~Evaluation, Ensemble Fusion, and Monitoring. The first stage transforms raw tabular applicant data into both a heterogeneous graph representation (for the GNN pipeline) and alternative representations suitable for the SNN and Autoencoder pipelines. The second stage applies three fundamentally different detection paradigms in parallel: GNN-based relational reasoning, SNN-based temporal pattern detection, and Autoencoder-based unsupervised anomaly scoring. The third stage evaluates each pipeline's performance across multiple metrics and data versions, fuses predictions through ensemble voting or stacking, and provides monitoring capabilities for production deployment.
+
+The three parallel pipelines exploit complementary views of the fraud detection problem. The \textbf{GNN pipeline} captures relational fraud patterns through graph topology and message passing. The \textbf{SNN pipeline} captures temporal dynamics and event-driven patterns through spike-based computation with leaky integrate-and-fire (LIF) neurons. The \textbf{Autoencoder pipeline} captures distributional anomalies through unsupervised reconstruction error analysis using both Variational Autoencoders (VAE) and Denoising Autoencoders (DAE). The ensemble fusion layer combines these complementary predictions into a unified fraud score.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figure_1}
+\caption{FraudGraphBuilder --- Heterogeneous Graph Construction Architecture. The left panel shows the data transformation pipeline from raw tabular data to PyTorch Geometric Data object. The right panel illustrates the graph schema with 17 attribute node types organized into three categories: Categorical (blue), Bucketed Continuous (green), and Binary/Flag (orange), all connected to a central User node.}
+\label{fig:ch4-fig1}
+\end{figure}
+
+\section{Component Design}
+
+\subsection{FraudGraphBuilder Component}
+
+The FraudGraphBuilder is the core component of the graph construction stage. It transforms a flat tabular dataset, where each row represents a credit card applicant, into a heterogeneous graph consisting of 17 distinct node types. Each applicant becomes a user node carrying a dense feature vector, while categorical and continuous attributes are mapped to shared attribute nodes. Edges connect users to their corresponding attribute nodes, creating a bipartite-style graph structure. This transformation enables the graph to encode not just what an applicant is (their features), but also who they are related to (shared devices, similar risk profiles, common behavioral patterns), providing a significantly richer representation for fraud detection.
+
+The system architecture is founded on the principle of heterogeneous information networks. Unlike standard graphs where all nodes are of the same type, our design distinguishes between user nodes and 17 categories of attribute nodes. This distinction is vital because it allows the model to differentiate between the primary entities (applicants) and the contextual features that link them together. The heterogeneous structure enables the graph neural network to learn rich representations that capture both node-level features and topological relationships. The architecture follows a three-stage transformation process that progressively converts raw tabular data into a graph structure suitable for neural network consumption.
+
+The three stages operate as follows. First, the raw tabular dataset is ingested and pre-processed to handle missing values and continuous numerical ranges. At this stage, certain identifying fields (email, phone, device\_id, IP address, name) are excluded from the user feature vector to prevent the model from memorizing identities rather than learning behavioral patterns. Second, we implement a discrete bucketing mechanism that transforms high-variance continuous features, such as credit risk scores and customer ages, into categorical representations suitable for graph nodes. Third, the system establishes undirected edges between user nodes and their corresponding attribute nodes, effectively turning the dataset into a bipartite-style graph where users are interconnected through shared properties.
+
+\subsubsection{Node Type Catalog}
+
+The FraudGraphBuilder constructs a heterogeneous graph with 17 distinct node types, each serving a specific purpose in capturing different dimensions of applicant behavior and identity. These node types are organized into three logical categories based on their data origin and the nature of the information they encode. Table~\ref{tab:ch4-nodetypes} provides a comprehensive catalog of all node types, their source columns, the number of possible values, and their significance in the fraud detection context.
+
+\begin{table}[H]
+\centering
+\caption{Complete Node Type Catalog}
+\label{tab:ch4-nodetypes}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{llXccX}
+\toprule
+\textbf{Category} & \textbf{Node Type} & \textbf{Source Column(s)} & \textbf{Values} & \textbf{Shared} & \textbf{Fraud Detection Rationale} \\
+\midrule
+Categorical & device\_os & device\_os\_windows / macintosh / linux & 3 & Yes & Fraudsters often use specific OS configurations \\
+Categorical & housing & housing\_status\_* (one-hot) & $\sim$7 & Yes & Housing instability may correlate with financial stress \\
+Categorical & employment & employment\_status\_* (one-hot) & $\sim$6 & Yes & Employment patterns are strong fraud indicators \\
+Categorical & payment\_type & payment\_type\_* (one-hot) & $\sim$5 & Yes & Certain payment methods are disproportionately used in fraud \\
+\midrule
+Bucketed & risk\_bucket & credit\_risk\_score & 6 & Yes & Credit risk score directly reflects financial reliability \\
+Bucketed & age\_bucket & customer\_age & $\sim$10 & Yes & Age demographics help identify fraud patterns \\
+Bucketed & credit\_limit\_bucket & proposed\_credit\_limit & 6 & Yes & Unusually high credit limit requests are strong fraud signals \\
+Bucketed & zip\_bucket & zip\_count\_4w & 4 & Yes & Multiple applications from same zip may indicate organized fraud \\
+Bucketed & vel6h & velocity\_6h & 4 & Yes & Rapid successive applications are hallmark of fraud rings \\
+Bucketed & vel24h & velocity\_24h & 4 & Yes & 24-hour velocity captures coordinated application patterns \\
+Bucketed & vel4w & velocity\_4w & 4 & Yes & 4-week velocity captures sustained fraud campaign activity \\
+\midrule
+Binary & email\_type & email\_is\_free & 2 & Yes & Free email services disproportionately used in fraud \\
+Binary & foreign & foreign\_request & 2 & Yes & Foreign requests carry higher risk \\
+Binary & session\_type & keep\_alive\_session & 2 & Yes & Automated sessions suggest bot-driven applications \\
+Binary & other\_cards & has\_other\_cards & 2 & Yes & Existing cardholders exhibit different risk profiles \\
+Binary & device & device\_id & Many & Yes & Shared devices among applicants are strong fraud ring indicators \\
+Binary & phone\_validity & phone\_home\_valid + phone\_mobile\_valid & 4 & Yes & Invalid phone numbers common in synthetic identity fraud \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Feature Bucketing Strategies}
+
+A critical design decision in the graph construction pipeline is how continuous numerical features are discretized into graph nodes. The FraudGraphBuilder employs three distinct bucketing strategies, each tailored to the statistical properties of the source feature. Table~\ref{tab:ch4-bucketing} provides a detailed breakdown of these strategies.
+
+\begin{table}[H]
+\centering
+\caption{Feature Bucketing Strategies}
+\label{tab:ch4-bucketing}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{llXccX}
+\toprule
+\textbf{Feature} & \textbf{Strategy} & \textbf{Buckets} & \textbf{Count} & \textbf{NaN Handling} & \textbf{Rationale} \\
+\midrule
+credit\_risk\_score & Equal-width (200) & very\_low ($<$200), low (200--400), medium (400--600), high (600--800), very\_high (800+) & 5 & ``unknown'' & Standard industry score ranges \\
+customer\_age & Decade bucketing & 0s, 10s, 20s, 30s, 40s, 50s, 60s, 70s, 80s, 90s & 10 & ``unknown'' & Natural age groupings \\
+proposed\_credit\_limit & Threshold-based & very\_low ($<$500), low (500--2K), medium (2K--5K), high (5K--10K), very\_high (10K+) & 5 & ``unknown'' & Business-relevant limits \\
+zip\_count\_4w & Activity tiers & zip\_unique (=1), zip\_low (2--5), zip\_medium (6--20), zip\_high ($>$20) & 4 & Skipped & Application density proxy \\
+velocity\_6h/24h/4w & Velocity tiers & single (=1), low (2--3), medium (4--10), high ($>$10) & 4 & Skipped & Behavioral speed tiers \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The bucketing strategies reflect domain-specific knowledge about financial fraud patterns. For example, the credit risk score uses a standard 200-point equal-width partitioning that aligns with common industry scoring brackets. The velocity features use a non-linear tiering that places greater granularity at the lower end (distinguishing between 1, 2--3, and 4--10) where the difference between a single application and a few applications is more informative than the difference between 50 and 100 applications.
+
+\subsubsection{Edge Construction and Symmetrization}
+
+The edge construction process follows a systematic pattern: for each applicant record, the builder iterates through all attribute categories and creates an edge between the user node and the corresponding attribute node. A crucial design choice is the edge symmetrization step: after collecting all directed edges (user to attribute), the builder duplicates each edge in the reverse direction (attribute to user). This creates an undirected graph that allows message-passing in both directions. The symmetrization is implemented efficiently using NumPy array concatenation, doubling the edge count while ensuring bidirectional information flow. The \texttt{edge\_index} tensor therefore has shape $[2, 2E]$, where $E$ is the number of directed user-to-attribute edges.
+
+\subsubsection{Graph Statistics}
+
+The FraudGraphBuilder produces a large-scale heterogeneous graph with the characteristics summarized in Table~\ref{tab:ch4-graphstats}.
+
+\begin{table}[H]
+\centering
+\caption{Graph Statistics Summary}
+\label{tab:ch4-graphstats}
+\small
+\begin{tabularx}{0.95\textwidth}{lXP{5.5cm}}
+\toprule
+\textbf{Property} & \textbf{Value} & \textbf{Notes} \\
+\midrule
+Total Nodes & 1,000,047 & Includes users + all attribute nodes \\
+Total Edges (directed) & 14,491,868 & Bidirectional: 7,245,934 unique connections \\
+User Nodes & $\sim$1,000,000 & One per applicant record \\
+Attribute Node Types & 17 & Categorical: 4, Bucketed: 7, Binary: 6 \\
+Feature Dimension (F) & Variable & All columns except excluded identifiers \\
+Edge Directionality & Undirected (symmetrized) & Each edge duplicated in reverse \\
+Output Format & PyTorch Geometric Data & x, edge\_index, y, user\_indices \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{GNN Model Components}
+
+The system supports three GNN model components, each implementing a different paradigm for graph-based fraud detection. The GraphSAGE component (GNNFraudDetector) follows a spatial aggregation approach with three SAGEConv layers. The QGNN component (PaperQGNN) implements a hybrid quantum-classical approach with angle encoding and variational quantum circuit layers. The Split GNN component implements spectral graph splitting with edge classification and dual-branch Beta wavelet filtering. All three components share a common interface accepting node features, edge index, and optional user indices.
+
+\subsection{SNN Pipeline Components}
+
+The Spiking Neural Network (SNN) pipeline introduces components specifically designed for temporal, event-driven fraud detection. The pipeline consists of three core components: a spike encoding module, the FraudSNN\_SuperDeep architecture, and an ensemble voting module.
+
+\subsubsection{Spike Encoding Module}
+
+The spike encoding module transforms static tabular applicant features into temporal spike trains suitable for processing by LIF neurons. Three encoding strategies are supported:
+
+\textbf{Rate Coding:} Each continuous feature value is normalized to $[0, 1]$ and interpreted as a firing probability. Over $T$ simulation timesteps, each neuron emits a spike at each timestep with probability proportional to the feature magnitude. This produces Poisson-like spike trains where the spike count encodes the feature value. Rate coding is robust to noise and provides a natural interface for LIF neuron dynamics.
+
+\textbf{Latency Coding:} Feature values are mapped to spike timing, with larger values producing earlier spikes. The spike time for feature dimension $d$ is computed as:
+\begin{equation}
+t_d = T \cdot (1 - x_d)
+\label{eq:latency-coding}
+\end{equation}
+where $x_d \in [0, 1]$ is the normalized feature value and $T$ is the total number of timesteps. Latency coding provides precise temporal information but is sensitive to normalization quality.
+
+\textbf{Delta Modulation:} For temporally ordered data (e.g., transaction streams), delta modulation encodes changes in feature values as spike events. An upward change produces an excitatory spike, while a downward change produces an inhibitory spike. This encoding is most applicable when the input data has inherent temporal ordering.
+
+The spike encoding module outputs a tensor of shape $[N, F, T]$ where $N$ is the batch size, $F$ is the feature dimension, and $T$ is the number of simulation timesteps.
+
+\subsubsection{FraudSNN\_SuperDeep Architecture}
+
+The FraudSNN\_SuperDeep architecture is a deep spiking neural network designed for fraud classification on tabular data. The architecture consists of multiple spiking layers built from LIF neurons with surrogate gradient training:
+
+\textbf{LIF Neuron Model:} Each LIF neuron maintains a membrane potential $V(t)$ that evolves according to:
+\begin{equation}
+\tau \frac{dV(t)}{dt} = -V(t) + \sum_i w_i \cdot S_i(t)
+\label{eq:lif-dynamics}
+\end{equation}
+where $\tau$ is the membrane time constant, $w_i$ are synaptic weights, and $S_i(t)$ are incoming spike signals. When $V(t)$ exceeds a threshold $V_{\text{th}}$, the neuron emits a spike and the potential is reset to $V_{\text{reset}}$.
+
+\textbf{Surrogate Gradient:} The non-differentiable spike generation is handled through a surrogate gradient function during backpropagation. The fast sigmoid surrogate is defined as:
+\begin{equation}
+\frac{\partial S}{\partial V} \approx \frac{1}{(\beta |V - V_{\text{th}}| + 1)^2}
+\label{eq:surrogate-gradient}
+\end{equation}
+where $\beta$ controls the steepness of the approximation. This enables gradient-based training while preserving discrete spike dynamics in the forward pass.
+
+\textbf{Network Structure:} The FraudSNN\_SuperDeep architecture stacks multiple fully-connected spiking layers with progressive hidden dimension reduction. Each spiking layer consists of a linear projection followed by LIF neuron activation. The final layer uses rate decoding---the membrane potential or spike count over the last several timesteps is aggregated to produce a scalar output for binary classification. Dropout is applied between spiking layers as a regularizer, and layer normalization is used to stabilize training across timesteps.
+
+\subsubsection{SNN Ensemble Voting Module}
+
+The SNN pipeline supports ensemble decision making through multiple independently trained FraudSNN\_SuperDeep models with different random initializations and hyperparameter configurations (varying hidden dimensions, number of layers, and membrane time constants). The ensemble aggregates predictions through:
+\begin{itemize}
+\item \textbf{Majority Voting:} Each model votes for the predicted class; the majority class is selected.
+\item \textbf{Weighted Averaging:} Model outputs (spike rates or membrane potentials) are averaged with weights proportional to validation AUC performance.
+\end{itemize}
+The ensemble approach mitigates the high variance that individual SNN models can exhibit due to the stochastic nature of spike generation and surrogate gradient approximation.
+
+\subsection{Autoencoder Pipeline Components}
+
+The Autoencoder pipeline provides unsupervised anomaly detection through two complementary autoencoder paradigms, followed by score-level stacking with gradient-boosted meta-learners.
+
+\subsubsection{Variational Autoencoder (VAE) Component}
+
+The VAE component learns a probabilistic latent representation of legitimate transaction patterns. The architecture consists of:
+
+\textbf{Encoder:} The encoder maps input features $x$ to a latent distribution parameterized by mean $\mu$ and log-variance $\log \sigma^2$ through a series of fully connected layers with ReLU activations and batch normalization. The latent vector $z$ is sampled using the reparameterization trick:
+\begin{equation}
+z = \mu + \sigma \cdot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I)
+\label{eq:vae-reparameterization}
+\end{equation}
+
+\textbf{Decoder:} The decoder reconstructs the input from the latent representation through a symmetric series of fully connected layers. The output layer uses sigmoid activation to reconstruct normalized feature values.
+
+\textbf{Loss Function:} The VAE is trained by maximizing the Evidence Lower Bound (ELBO), which decomposes into reconstruction loss (binary cross-entropy or mean squared error) and a KL divergence regularization term:
+\begin{equation}
+\mathcal{L}_{\text{VAE}} = \mathcal{L}_{\text{recon}} + \beta \cdot D_{\text{KL}}(q(z|x) \| p(z))
+\label{eq:vae-loss}
+\end{equation}
+where $\beta$ is a weighting coefficient that can be annealed during training ($\beta$-VAE) to control the trade-off between reconstruction fidelity and latent space regularity.
+
+\textbf{Anomaly Scoring:} The VAE produces anomaly scores from two complementary signals: (1)~reconstruction error, computed as the mean squared error between input and reconstruction; and (2)~negative log-likelihood, estimated from the ELBO. Fraudulent transactions, which deviate from the learned distribution of legitimate behavior, yield high scores on both metrics.
+
+\textbf{Target Manifold Isolation:} The VAE is trained exclusively on legitimate transactions (where \texttt{fraud\_bool} = 0), ensuring that the learned latent space represents only the normal behavior manifold. This isolation is critical: by excluding fraudulent samples from training, the autoencoder has no capacity to reconstruct anomalous patterns, producing maximally discriminative reconstruction errors for fraud.
+
+\subsubsection{Denoising Autoencoder (DAE) Component}
+
+The DAE component learns robust feature representations by reconstructing clean inputs from corrupted versions. The architecture consists of:
+
+\textbf{Swap Noise Corruption:} The DAE employs swap noise corruption, where each input feature is independently replaced with probability $\rho$ (the corruption rate) by a value randomly sampled from the empirical marginal distribution of that feature in the training set. This strategy is particularly effective for tabular fraud data because:
+\begin{itemize}
+\item It forces the autoencoder to learn inter-feature dependencies rather than memorizing individual feature values.
+\item It is invariant to feature scale and distribution, unlike Gaussian noise which requires careful tuning per feature.
+\item It naturally handles mixed-type features (categorical, continuous, binary).
+\end{itemize}
+
+\textbf{Encoder/Decoder Architecture:} The DAE uses a symmetric autoencoder architecture with fully connected layers, ReLU activations, and batch normalization. The encoder progressively reduces dimensionality to a bottleneck layer, and the decoder reconstructs the original (uncorrupted) input. The reconstruction loss uses mean squared error for continuous features and binary cross-entropy for binary features.
+
+\textbf{Corruption Schedule:} The corruption rate $\rho$ can follow a schedule: starting at a high rate (e.g., $\rho = 0.3$) and annealing to a lower rate (e.g., $\rho = 0.1$) during training. This curriculum encourages the model to first learn broad inter-feature relationships and then refine them.
+
+\textbf{Anomaly Scoring:} The DAE produces anomaly scores from the reconstruction error on uncorrupted inputs at test time. Fraudulent transactions, which violate the learned inter-feature relationships, produce high reconstruction errors even without input corruption.
+
+\subsubsection{Score-Level Stacking with XGBoost/LightGBM}
+
+The stacking component combines the anomaly scores from the VAE and DAE into a unified fraud prediction using a gradient-boosted decision tree meta-learner:
+
+\textbf{Feature Matrix for Stacking:} The meta-learner receives a feature matrix consisting of: (1)~VAE reconstruction error, (2)~VAE negative log-likelihood, (3)~DAE reconstruction error, and optionally (4)~raw tabular features as auxiliary inputs. This provides the meta-learner with complementary anomaly signals from both autoencoder paradigms.
+
+\textbf{Meta-Learner Selection:} Two gradient-boosted decision tree implementations are supported:
+\begin{itemize}
+\item \textbf{XGBoost:} Provides robust performance with built-in regularization (L1/L2), handling of missing values, and efficient histogram-based splitting. The \texttt{scale\_pos\_weight} parameter directly addresses the extreme class imbalance in fraud detection.
+\item \textbf{LightGBM:} Offers faster training through Gradient-based One-Side Sampling (GOSS) and Exclusive Feature Bundling (EFB), with native categorical feature support. The \texttt{is\_unbalance} flag handles class imbalance during training.
+\end{itemize}
+
+\textbf{Training Protocol:} The stacking meta-learner is trained on labeled data (unlike the unsupervised autoencoders), using cross-validated predictions from the VAE and DAE to prevent information leakage. The meta-learner's hyperparameters (learning rate, max depth, number of estimators, subsample ratio) are optimized via Bayesian optimization with AUC-ROC as the objective.
+
+\subsection{Evaluation and Monitoring Components}
+
+The evaluation component provides standardized metrics computation including ROC AUC, precision-recall curves, confusion matrices, and subgroup fairness analysis. It supports per-pipeline evaluation as well as combined ensemble evaluation. The monitoring component tracks performance drift across data versions and generates alerts when metrics degrade beyond configured thresholds. Monitoring covers all three pipelines independently, enabling early detection of pipeline-specific degradation (e.g., distributional shift affecting the autoencoder's reconstruction quality, or temporal pattern changes reducing SNN effectiveness).
+
+\section{The AI Pipeline Architecture}
+
+The AI pipeline follows a three-branch parallel architecture with a shared data ingestion stage and a unified ensemble fusion stage:
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Data Ingestion and Preparation:} Raw tabular data is loaded and validated against the schema defined in the data requirements. The data is then distributed to three parallel preparation paths:
+\begin{itemize}
+\item \textit{GNN Path:} The FraudGraphBuilder transforms the validated data into a PyTorch Geometric Data object containing the node feature matrix, edge index, labels, and user indices.
+\item \textit{SNN Path:} The spike encoding module transforms tabular features into temporal spike trains of shape $[N, F, T]$ using the configured encoding strategy (rate coding, latency coding, or delta modulation).
+\item \textit{AE Path:} The data is split into a legitimate-only training set (for unsupervised autoencoder training) and a full labeled evaluation set. Features are normalized and the marginal distributions are computed for swap noise generation.
+\end{itemize}
+\item \textbf{Parallel Model Training:} Three pipelines are trained independently:
+\begin{itemize}
+\item \textit{GNN Pipeline:} The selected GNN architecture (GraphSAGE, QGNN, or Split GNN) is trained using temporal validation with class-weighted loss functions and early stopping.
+\item \textit{SNN Pipeline:} The FraudSNN\_SuperDeep model is trained using surrogate gradient descent with BCEWithLogitsLoss, class-weighted to handle imbalance, and temporal simulation over $T$ timesteps. Multiple models are trained for ensemble voting.
+\item \textit{AE Pipeline:} The VAE and DAE are trained independently on the legitimate-only subset. The VAE optimizes the ELBO objective; the DAE optimizes reconstruction loss with swap noise corruption. Stacking meta-learners (XGBoost/LightGBM) are trained on the combined anomaly scores.
+\end{itemize}
+\item \textbf{Threshold Calibration:} Operating thresholds are calibrated independently for each pipeline on the validation set to achieve the target 5\% false positive rate.
+\item \textbf{Inference and Ensemble Fusion:} Each pipeline produces fraud predictions on the test set. Predictions are combined through:
+\begin{itemize}
+\item Majority voting across pipeline outputs
+\item Weighted averaging of pipeline probability scores (weights proportional to validation AUC)
+\item Score-level stacking: pipeline outputs serve as features for a meta-learner
+\end{itemize}
+\item \textbf{Evaluation and Cross-Version Analysis:} Comprehensive metrics are computed for each pipeline individually and for the ensemble. Performance is compared across data distribution variants to assess robustness of each pipeline and the combined system.
+\end{enumerate}
+
+\section{Technology Stack Selection}
+
+\begin{table}[H]
+\centering
+\caption{Technology Stack}
+\label{tab:techstack}
+\small
+\begin{tabularx}{\textwidth}{lLX}
+\toprule
+\textbf{Component} & \textbf{Technology} & \textbf{Justification} \\
+\midrule
+Programming Language & Python 3.10+ & Dominant ecosystem for ML/DL; extensive library support \\
+Deep Learning Framework & PyTorch 2.x & Flexible autograd; native GPU support; research-friendly API \\
+Graph Neural Networks & PyTorch Geometric & Efficient sparse tensor operations; heterogeneous graph support \\
+Data Processing & Pandas, NumPy & Standard data manipulation; efficient array operations \\
+Quantum Simulation & PennyLane / Qiskit & Variational quantum circuit simulation; gradient computation \\
+Spiking Neural Networks & snnTorch, Norse & Differentiable LIF neuron models; surrogate gradient training; PyTorch integration; temporal simulation support \\
+Autoencoders (VAE/DAE) & PyTorch (custom), PyOD & Flexible VAE/DAE architecture design; anomaly detection utilities; distribution fitting \\
+Stacking Meta-Learner & XGBoost, LightGBM & Efficient gradient-boosted trees; built-in class imbalance handling; categorical feature support (LightGBM) \\
+Experiment Tracking & TensorBoard / Weights \& Biases & Training visualization; hyperparameter logging \\
+Model Evaluation & scikit-learn & Standard metrics; confusion matrices; ROC analysis \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The technology stack has been extended to support the SNN and Autoencoder pipelines. \textbf{snnTorch} provides a PyTorch-native implementation of spiking neuron models (LIF, Parametric LIF) with built-in surrogate gradient functions, enabling seamless integration with existing PyTorch training loops. \textbf{Norse} offers an alternative SNN framework with biophysically detailed neuron models and event-driven simulation capabilities. For the Autoencoder pipeline, \textbf{PyOD} (Python Outlier Detection) provides baseline implementations and evaluation utilities for anomaly detection, while custom PyTorch modules enable the specific VAE and DAE architectures required by our design. The stacking meta-learner leverages \textbf{XGBoost} and \textbf{LightGBM} for their proven effectiveness in tabular classification tasks and built-in mechanisms for handling extreme class imbalance.

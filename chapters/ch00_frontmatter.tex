@@ -1,0 +1,176 @@
+% =====================================================================
+% FRONT MATTER
+% =====================================================================
+
+% -------------------- Cover Page --------------------
+\begin{titlepage}
+\centering
+\vspace*{1cm}
+{\Large\bfseries University Name\par}
+\vspace{0.5cm}
+{\large Faculty of Computer Science and Engineering\par}
+\vspace{0.3cm}
+{\large Department of Artificial Intelligence\par}
+\vspace{2cm}
+{\Huge\bfseries Financial Fraud Detection\\Using Multi-Paradigm Deep Learning:\\Graph Neural Networks, Spiking Neural Networks,\\and Unsupervised Autoencoders\par}
+\vspace{1cm}
+{\Large Graduation Project\par}
+\vspace{2cm}
+\begin{tabular}{ll}
+\textbf{Student:} & % TODO: Student Name \\[4pt]
+\textbf{Supervisor:} & % TODO: Supervisor Name \\[4pt]
+\textbf{Co-Supervisor:} & % TODO: Co-Supervisor Name \\
+\end{tabular}
+\vspace{2cm}
+{\Large Academic Year 2024--2025\par}
+\vfill
+\end{titlepage}
+
+% -------------------- Declaration of Originality --------------------
+\chapter*{Declaration of Originality}
+\addcontentsline{toc}{chapter}{Declaration of Originality}
+
+I hereby declare that this thesis, entitled \emph{Financial Fraud Detection Using Multi-Paradigm Deep Learning: Graph Neural Networks, Spiking Neural Networks, and Unsupervised Autoencoders}, is the result of my own original work. This thesis has not been submitted for any degree or examination at any other university. All sources of information used have been properly acknowledged and referenced.
+
+I confirm that the research presented in this thesis was conducted in accordance with the principles of research integrity and honesty. No part of this thesis has been previously published, except where explicit reference is made to the work of others, and with the exception of the following:% TODO: Add any publications derived from this thesis
+
+\vspace{2cm}
+\noindent
+\begin{tabular}{ll}
+Signature: & \underline{\hspace{6cm}} \\[12pt]
+Name: & % TODO: Full Name \\[12pt]
+Date: & % TODO: Date \\
+\end{tabular}
+
+% -------------------- Abstract --------------------
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Financial fraud detection remains a critical challenge in the banking and financial services industry, with fraudsters continuously evolving their tactics to circumvent traditional rule-based detection systems. This thesis presents a comprehensive multi-paradigm investigation of deep learning architectures for financial fraud detection, leveraging the complementary strengths of graph neural networks, spiking neural networks, and unsupervised autoencoders to identify fraudulent patterns that are invisible to conventional tabular approaches.
+
+We develop \textsc{FraudGraphBuilder}, a specialized framework that transforms flat tabular applicant data into a rich heterogeneous graph comprising over one million nodes and 14.5 million edges across 17 distinct node types. This graph representation captures relational patterns such as shared devices, overlapping behavioral profiles, and coordinated temporal activity that are indicative of fraudulent networks.
+
+Three complementary deep learning pipelines are designed, implemented, and systematically evaluated. The \textbf{GNN pipeline} investigates three graph neural network architectures: a GraphSAGE-based model employing neighborhood sampling and aggregation across three convolutional layers, achieving a test ROC AUC of 0.8859 with a true positive rate of 52.54\% at 5\% false positive rate; a Quantum Graph Neural Network (QGNN) introducing a hybrid quantum-classical paradigm with angle encoding and variational quantum circuit layers, achieving a peak AUC of 0.8769; and a Split GNN architecture introducing a novel graph-partitioning mechanism with an edge classifier and dual-branch Beta wavelet filtering, achieving a competitive AUC of up to 0.8806. A comprehensive 45-experiment hyperparameter tuning study for the Split GNN reveals that simpler spectral filtering ($C=1$) consistently outperforms more complex alternatives, and that incorporating same-class edge information ($K=0$) is essential for effective fraud detection.
+
+The \textbf{SNN pipeline} explores the application of spiking neural networks to fraud detection, employing Leaky Integrate-and-Fire (LIF) neuron models with rate coding for temporal feature representation. Surrogate gradient descent enables effective training through non-differentiable spike thresholds, while ensemble methods combining multiple SNN configurations enhance detection stability and robustness. The spiking paradigm offers inherent advantages for processing event-driven transaction streams with energy-efficient computation.
+
+The \textbf{Autoencoder pipeline} leverages unsupervised anomaly detection through two complementary architectures: a Variational Autoencoder (VAE) that models the latent distribution of legitimate transactions using the evidence lower bound (ELBO) objective with the reparameterization trick, and a Denoising Autoencoder (DAE) that learns robust feature representations by reconstructing inputs corrupted with swap noise. Score-level stacking of VAE and DAE anomaly scores with gradient-boosted classifiers (XGBoost and LightGBM) produces a powerful ensemble that effectively separates fraudulent from legitimate patterns without requiring labeled training data.
+
+Cross-version fairness analysis across six data distributions reveals significant performance variability (AUC range: 0.7587--0.9454 for GNN, 0.8101--0.9587 for SNN, 0.7893--0.9421 for AE), highlighting the critical importance of monitoring for distributional shift in production systems. The SNN pipeline demonstrates the highest stability across data versions with a coefficient of variation of only 5.53\%, compared to 7.21\% for GraphSAGE and 6.13\% for the VAE-Stacked autoencoder. A controlled resampling experiment demonstrates that inverse-frequency class weighting outperforms ADASYN-based resampling strategies for graph-based fraud detection, providing better-calibrated probability outputs and superior overall performance, while synthetic oversampling within autoencoder training loops causes severe probability miscalibration and uniform performance drops \cite{dong2025enhanced}. Cross-pipeline comparison reveals complementary strengths: the GNN pipeline excels at exploiting relational structure, the SNN pipeline offers temporal processing advantages and the highest overall detection performance, and the Autoencoder pipeline provides robust anomaly detection without label dependence.
+
+The contributions of this thesis include: (1) a robust graph construction pipeline for financial fraud data, (2) a systematic comparison of three distinct GNN paradigms, (3) the first application of spiking neural networks with surrogate gradient descent to financial fraud detection, (4) a dual-autoencoder stacking framework with gradient-boosted meta-learners, (5) comprehensive hyperparameter sensitivity analysis for spectral graph filtering, (6) fairness and robustness evaluation across data distributions, and (7) a cross-pipeline comparison providing practical recommendations for production deployment of multi-paradigm fraud detection systems.
+
+\vspace{1cm}
+\noindent\textbf{Keywords:} Financial Fraud Detection, Graph Neural Networks, Spiking Neural Networks, Variational Autoencoder, Denoising Autoencoder, GraphSAGE, Quantum Machine Learning, Split GNN, Rate Coding, Ensemble Methods, Class Imbalance, Fairness Evaluation
+
+% -------------------- Acknowledgment --------------------
+\chapter*{Acknowledgment}
+\addcontentsline{toc}{chapter}{Acknowledgment}
+
+% TODO: Write acknowledgment section
+First and foremost, I would like to express my sincere gratitude to my supervisor for their invaluable guidance, patience, and constructive feedback throughout this research. Their expertise and insights have been instrumental in shaping the direction and quality of this work.
+
+I would also like to thank the faculty members of the Department of Artificial Intelligence for providing a stimulating academic environment and for their commitment to research excellence.
+
+Special thanks to my colleagues and classmates for their support, collaboration, and stimulating discussions that enriched my understanding of graph neural networks, spiking neural networks, autoencoders, and financial fraud detection.
+
+Finally, I am deeply grateful to my family for their unwavering support, encouragement, and understanding throughout this challenging journey.
+
+% -------------------- Dedication --------------------
+\chapter*{Dedication}
+\addcontentsline{toc}{chapter}{Dedication}
+
+% TODO: Write dedication
+To my family, whose love and support made this possible.
+
+% -------------------- Table of Contents --------------------
+\tableofcontents
+\newpage
+
+% -------------------- List of Figures --------------------
+\listoffigures
+\newpage
+
+% -------------------- List of Tables --------------------
+\listoftables
+\newpage
+
+% -------------------- List of Algorithms --------------------
+\listofalgorithms
+\newpage
+
+% -------------------- List of Abbreviations and Acronyms --------------------
+\chapter*{List of Abbreviations and Acronyms}
+\addcontentsline{toc}{chapter}{List of Abbreviations and Acronyms}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{0.7\textwidth}{lL}
+\toprule
+\textbf{Abbreviation} & \textbf{Definition} \\
+\midrule
+ADASYN & Adaptive Synthetic Sampling \\
+AUC & Area Under the Curve \\
+AUC-PR & Area Under the Precision-Recall Curve \\
+AUC-ROC & Area Under the Receiver Operating Characteristic Curve \\
+BAF & Bank Account Fraud \\
+BCE & Binary Cross-Entropy \\
+BPTT & Backpropagation Through Time \\
+DAE & Denoising Autoencoder \\
+ELBO & Evidence Lower Bound \\
+FPR & False Positive Rate \\
+GAT & Graph Attention Network \\
+GELU & Gaussian Error Linear Unit \\
+GNN & Graph Neural Network \\
+GP & Graph Partitioning \\
+KL & Kullback-Leibler Divergence \\
+LIF & Leaky Integrate-and-Fire \\
+MLP & Multi-Layer Perceptron \\
+QGNN & Quantum Graph Neural Network \\
+QML & Quantum Machine Learning \\
+ROC & Receiver Operating Characteristic \\
+SAGEConv & SAGE Convolution Layer \\
+SNN & Spiking Neural Network \\
+TPR & True Positive Rate \\
+VAE & Variational Autoencoder \\
+VQC & Variational Quantum Circuit \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% -------------------- Glossary --------------------
+\chapter*{Glossary}
+\addcontentsline{toc}{chapter}{Glossary}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{0.85\textwidth}{lL}
+\toprule
+\textbf{Term} & \textbf{Definition} \\
+\midrule
+Angle Encoding & A quantum feature encoding method that maps classical data to rotation angles of quantum gates \\
+Barren Plateaus & A phenomenon in variational quantum circuits where the gradient vanishes exponentially with system size \\
+Beta Wavelet & A spectral graph wavelet constructed from Beta polynomial coefficients for multi-scale graph filtering \\
+Edge Classifier & A neural module that predicts whether a graph edge connects nodes of the same or different classes \\
+Evidence Lower Bound & A lower bound on the log-likelihood of data used as the training objective for variational autoencoders, comprising reconstruction quality and KL divergence terms \\
+Focal Loss & A loss function that down-weights well-classified examples to focus learning on hard samples \\
+Graph Splitting & The process of partitioning graph edges into subsets based on learned edge semantics \\
+Heterogeneous Graph & A graph containing multiple types of nodes and/or edges \\
+Hinge Loss & A margin-based loss function used for training the edge classifier \\
+Laplacian & A matrix representation of graph connectivity used in spectral graph theory \\
+Latent Space & A lower-dimensional learned representation capturing essential data structure, used by autoencoders to encode input distributions \\
+Membrane Potential & The internal state variable of a spiking neuron that accumulates incoming signals and triggers a spike when a threshold is reached \\
+Message Passing & The mechanism by which GNN nodes exchange information with their neighbors \\
+Over-smoothing & A phenomenon in deep GNNs where node embeddings become indistinguishable after many layers \\
+Population Coding & A neural coding scheme where information is represented by the collective activity pattern of a group of neurons rather than a single neuron \\
+Rate Coding & A neural coding scheme where information is represented by the firing rate of spiking neurons over a time window \\
+Reparameterization Trick & A technique enabling gradient-based optimization through stochastic sampling in variational autoencoders by reparameterizing the sampling process \\
+Spectral Filtering & Graph signal processing in the frequency domain using the graph Laplacian spectrum \\
+Surrogate Gradient & A differentiable approximation of the non-differentiable spike threshold function used to enable backpropagation in spiking neural networks \\
+Swap Noise & A corruption technique for denoising autoencoders where a subset of input features is randomly replaced with values drawn from the empirical marginal distribution \\
+Variational Circuit & A parameterized quantum circuit whose parameters are optimized during training \\
+\bottomrule
+\end{tabularx}
+\end{table}

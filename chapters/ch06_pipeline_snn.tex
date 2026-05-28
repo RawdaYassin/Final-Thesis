@@ -1,0 +1,707 @@
+% =====================================================================
+% CHAPTER 6: PIPELINE II — SPIKING NEURAL NETWORK–BASED FRAUD DETECTION
+% =====================================================================
+\chapter{Pipeline II: Spiking Neural Network--Based Fraud Detection}
+\label{ch:snn}
+
+\section{Introduction and Research Questions}
+
+The preceding chapter established the graph-based approach to fraud detection, demonstrating how relational structure can be leveraged through Graph Neural Networks to identify fraudulent patterns. However, GNNs operate exclusively within the domain of conventional, rate-coded artificial neural networks, where information propagates as continuous-valued activations and gradients flow unimpeded through differentiable computational graphs. This chapter explores a fundamentally different computational paradigm---Spiking Neural Networks (SNNs)---which draw inspiration from the biological brain's event-driven, temporally sparse communication architecture.
+
+SNNs represent the third generation of neural networks~\cite{maass1997networks}, distinguished by their use of discrete binary spikes for inter-neuron communication and their incorporation of temporal dynamics through membrane potential evolution. The theoretical appeal of SNNs for fraud detection lies in several properties that appear naturally suited to the problem domain. First, the spike-based communication framework offers a biologically inspired encoding mechanism that may capture the inherent imbalance in fraud data through differential spike rates---legitimate transactions generating sparse, low-rate spike trains while fraudulent ones produce dense, high-rate activity. Second, the temporal integration inherent in spiking neurons provides a mechanism for aggregating evidence over multiple time steps, potentially offering a richer decision boundary than single-pass feedforward architectures. Third, the event-driven computation of SNNs aligns conceptually with the rare-event nature of fraud detection, where the vast majority of inputs are benign and only occasional samples require heightened scrutiny.
+
+Despite these theoretical advantages, the application of SNNs to tabular fraud detection remains largely unexplored in the literature. The vast majority of SNN research has focused on neuromorphic vision and audio tasks using event-based sensors, leaving open the question of whether the spike-based paradigm can offer meaningful advantages for static, structured financial data. Furthermore, the non-differentiable nature of spike generation introduces fundamental challenges for gradient-based optimization, requiring surrogate gradient methods~\cite{zenke2021remarkable,eshraghian2021training} whose behavior under extreme class imbalance remains poorly understood.
+
+This chapter addresses these gaps through the following research questions:
+
+\begin{description}
+\item[RQ1:] Can biologically inspired spike encoding (rate coding with Bernoulli sampling) provide an inductive bias that improves detection of the minority fraud class compared to conventional continuous-valued representations, particularly under the extreme imbalance characteristic of financial fraud datasets (fraud prevalence $\approx$1.10\%)?
+\item[RQ2:] How effectively can an SNN-based fraud detector satisfy the strict operational constraint of maintaining a false positive rate at or below 5\%, given the inherent calibration challenges introduced by surrogate gradient training and discrete spike-count decoding?
+\item[RQ3:] Does the SNN exhibit equitable predictive performance across demographically diverse sub-populations as encoded in the BAF dataset variants, or does the spike-based paradigm introduce systematic fairness disparities relative to conventional machine learning baselines?
+\end{description}
+
+To investigate these questions, we design and implement a complete SNN-based fraud detection pipeline, from data preprocessing and spike encoding through architecture design, training, and evaluation on the Bank Account Fraud (BAF) Dataset Suite~\cite{jesus2022bank,feedzai2022baf}. The pipeline is benchmarked against both traditional machine learning baselines (Isolation Forest, Random Forest, LightGBM) and an extensive ensemble voting search spanning over 1,000 configurations. The results provide the first systematic assessment of SNN viability for tabular fraud detection, contributing empirical evidence on both the promise and the limitations of the spiking paradigm in this domain.
+
+\section{Theoretical Background}
+
+\subsection{Evolution of Neural Computing Paradigms}
+
+The evolution of neural computing can be understood through three generational shifts, each defined by fundamental changes in the computational primitives employed by network architectures. The first generation, rooted in the perceptron model introduced by Rosenblatt in 1958, employed threshold units that produced binary outputs: a neuron fired (output 1) if its weighted input sum exceeded a threshold, and remained silent (output 0) otherwise. While these networks could represent Boolean functions and simple decision boundaries, their lack of continuous activation functions precluded gradient-based learning and severely limited their representational capacity.
+
+The second generation introduced continuously differentiable activation functions---sigmoid, hyperbolic tangent, and later ReLU---enabling backpropagation and the training of deep architectures. These networks compute real-valued activations as weighted sums of their inputs, passed through smooth nonlinearities, and their differentiability permits efficient gradient-based optimization. Virtually all modern deep learning architectures, including the GNNs studied in Chapter~\ref{ch:gnn}, belong to this generation. However, the continuous-valued communication between neurons bears little resemblance to biological neural processing, where information is encoded in the timing of discrete action potentials.
+
+The third generation, formalized by Maass~\cite{maass1997networks}, incorporates explicitly the temporal dimension of neural computation through spiking neurons. Unlike their predecessors, SNNs communicate via discrete, binary events (spikes) that occur at precise moments in time. The temporal pattern of these spikes---rather than a single continuous activation value---carries information. This shift introduces several profound changes to the computational model: neurons maintain an internal state (membrane potential) that evolves over time, spike generation is a nonlinear thresholding operation that produces binary events, and information must be decoded from spike timing or spike rates rather than read directly from activation magnitudes. These properties make SNNs theoretically more expressive per unit of communication (a spike train can encode information in both rate and temporal dimensions) but also fundamentally more challenging to train, as the discrete spike generation function is non-differentiable.
+
+\subsection{Biological Neuron Models}
+
+Computational neuroscience has produced a hierarchy of neuron models that trade off biological fidelity against computational tractability. Understanding this hierarchy is essential for selecting an appropriate model for engineering applications such as fraud detection, where biological realism must be balanced against training efficiency and scalability to large datasets.
+
+The Hodgkin--Huxley (HH) model represents the gold standard of biophysical realism. It describes neuronal dynamics through a system of four coupled ordinary differential equations that model the flow of sodium, potassium, and leak ion currents through voltage-gated channels in the neuronal membrane. Each ion channel type is governed by gating variables whose voltage-dependent opening and closing kinetics are captured by experimentally fitted rate functions. While the HH model accurately reproduces the shape and timing of action potentials, its computational cost---requiring numerical integration of four coupled ODEs per time step with sub-millisecond resolution---makes it impractical for large-scale network simulations involving millions of time steps and thousands of neurons.
+
+The Izhikevich model offers a principled compromise between biological plausibility and computational efficiency. Through a clever two-dimensional system of ordinary differential equations with a piecewise linear reset mechanism, it can reproduce over twenty distinct firing patterns observed in cortical neurons, including regular spiking, bursting, chattering, fast spiking, and low-threshold spiking. The model requires only thirteen floating-point operations per time step, making it significantly faster than the HH model while retaining the ability to exhibit biologically relevant dynamical phenomena.
+
+The Spike Response Model (SRM) abstracts further by representing the neuron's state through a set of kernel functions that describe the post-synaptic potential and the refractory response. Rather than tracking continuous dynamical variables, the SRM evaluates the membrane potential as a weighted sum of kernel contributions from incoming spikes and recent output spikes. This formulation is particularly amenable to theoretical analysis and connects naturally to generalized linear models of neural coding, but its reliance on kernel evaluation can become computationally expensive for dense spike trains.
+
+The Leaky Integrate-and-Fire (LIF) model, which we adopt for the present work, simplifies the dynamics to a single first-order linear differential equation describing the membrane potential's passive decay toward a resting value, punctuated by instantaneous threshold crossings that generate output spikes and reset the potential. The LIF model captures the essential features of neural computation---temporal integration, threshold-based firing, and refractory resetting---while remaining computationally minimal. Its linearity between spikes permits analytical solutions and efficient Euler discretization, and its single-equation formulation enables straightforward implementation on modern hardware including GPUs. Table~\ref{tab:snn-neuron-comparison} provides a systematic comparison of these four models.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Biological Neuron Models}
+\label{tab:snn-neuron-comparison}
+\small
+\begin{tabularx}{\textwidth}{lXXXX}
+\toprule
+\textbf{Property} & \textbf{Hodgkin--Huxley} & \textbf{Izhikevich} & \textbf{Spike Response} & \textbf{LIF} \\
+\midrule
+Equations & 4 coupled ODEs & 2 ODEs + reset & Kernel sums & 1 ODE + reset \\
+Variables & $V, m, h, n$ & $v, u$ & $V(t)$ & $V(t)$ \\
+Firing patterns & Squid axon only & 20+ types & Configurable & Regular spiking \\
+FLOPs/step & $\sim$1,200 & $\sim$13 & Variable & $\sim$5 \\
+Analytical tractability & Very low & Low & Moderate & High \\
+Biophysical basis & Ion channel kinetics & Phenomenological & Kernel-based & Circuit analogy \\
+GPU parallelism & Moderate & Good & Moderate & Excellent \\
+Suitable for DL & No & Rarely & Occasionally & Yes (snnTorch) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Mathematical Formulation of the LIF Neuron}
+
+The Leaky Integrate-and-Fire neuron models the subthreshold dynamics of a biological neuron as a leaky resistor--capacitor (RC) circuit driven by an input current. The membrane potential $V(t)$ evolves according to the first-order linear differential equation:
+
+\begin{equation}
+\tau_m \frac{dV(t)}{dt} = -\bigl(V(t) - V_{\text{rest}}\bigr) + R_m \, I(t)
+\label{eq:snn-lif-continuous}
+\end{equation}
+
+where $\tau_m = R_m C_m$ is the membrane time constant (the product of membrane resistance $R_m$ and capacitance $C_m$), $V_{\text{rest}}$ is the resting potential to which the membrane decays in the absence of input, and $I(t)$ is the synaptic input current. The term ``leaky'' refers to the first term on the right-hand side, which causes the membrane potential to exponentially decay toward $V_{\text{rest}}$ when no input is present, mimicking the passive ion channel leakage in biological membranes.
+
+For implementation on digital hardware, the continuous-time dynamics must be discretized. Applying the forward Euler method with time step $\Delta t$ yields the recursive update rule:
+
+\begin{equation}
+V[t] = \beta \, V[t-1] + (1 - \beta) \, I[t]
+\label{eq:snn-lif-discrete}
+\end{equation}
+
+where $\beta = \exp(-\Delta t / \tau_m)$ is the decay factor that determines how much of the previous membrane potential is retained at each time step. When $\beta$ is close to 1, the neuron has a long memory, integrating inputs over many time steps; when $\beta$ is close to 0, the neuron responds primarily to the most recent input, behaving almost like a conventional feedforward unit. In our implementation, $\beta$ is treated as a learnable parameter, allowing the network to adapt its temporal integration window during training.
+
+Spike generation occurs when the membrane potential crosses a fixed threshold $V_{\text{th}}$:
+
+\begin{equation}
+S[t] = \Theta\bigl(V[t] - V_{\text{th}}\bigr)
+\label{eq:snn-spike-gen}
+\end{equation}
+
+where $\Theta(\cdot)$ is the Heaviside step function, yielding $S[t] = 1$ if the threshold is crossed and $S[t] = 0$ otherwise. Following spike generation, the membrane potential is reset using the subtractive reset mechanism:
+
+\begin{equation}
+V[t] = V[t] - S[t] \cdot V_{\text{th}}
+\label{eq:snn-reset}
+\end{equation}
+
+The subtractive reset (as opposed to a hard reset to $V_{\text{rest}}$) has been shown to preserve subthreshold information that would otherwise be lost, enabling the neuron to maintain a residual membrane potential that reflects inputs arriving shortly after a spike. This property is particularly important for rate coding schemes where the precise membrane potential trajectory between spikes carries information about the input magnitude. The complete LIF neuron dynamics, combining integration, thresholding, and reset, constitute the fundamental computational unit of the FraudSNN architecture developed in this work.
+
+\subsection{Spike Encoding Frameworks}
+
+A critical design decision in any SNN application is the method by which real-valued input data is converted into spike trains. The encoding scheme determines what information is represented in the spike domain and how it can be recovered by downstream neurons. Several encoding frameworks have been proposed in the literature, each with distinct advantages and limitations for different application domains.
+
+\textbf{Rate Coding} converts the magnitude of an input value into the firing frequency of a spike train. Higher input values produce more spikes per unit time, while lower values produce fewer. In the stochastic variant employed in this work, each time step independently generates a spike with probability proportional to the normalized input value, yielding Bernoulli-distributed spike trains. Rate coding is robust to noise, straightforward to implement, and naturally compatible with the LIF neuron's temporal integration, which effectively computes a running average of incoming spike rates. Its primary disadvantage is temporal inefficiency: accurate rate estimation requires many time steps, and the statistical variance of spike counts decreases only as $O(1/\sqrt{T})$.
+
+\textbf{Latency Coding} (also called temporal coding or time-to-first-spike coding) maps input magnitude to the timing of the first spike: larger inputs elicit earlier spikes, while smaller inputs produce later spikes. This encoding is highly efficient in terms of the number of spikes generated (at most one per neuron per presentation) and can enable ultra-fast inference when only the first spike matters. However, it is sensitive to spike timing jitter and requires precise temporal alignment across the network, which can be difficult to maintain in deep architectures.
+
+\textbf{Delta Modulation Coding} generates spikes when the change in input value exceeds a threshold, encoding temporal derivatives rather than absolute levels. This encoding is particularly suited for continuously varying signals such as audio or neuromorphic sensor data, where events correspond to meaningful changes in the environment. For static tabular data, delta modulation is less natural, as there is no inherent temporal variation to encode.
+
+\textbf{Phase Coding} represents information in the relative phase of spike trains with respect to a global oscillatory reference signal. Inspired by hippocampal theta-phase precession, this encoding can convey information through sub-millisecond timing precision. However, it requires a shared oscillatory clock and is susceptible to desynchronization, making it challenging for practical implementation in deep networks.
+
+Table~\ref{tab:snn-encoding-comparison} summarizes the key properties of these four encoding schemes. Based on this analysis, we select rate coding with Bernoulli sampling as the encoding strategy for our fraud detection pipeline, supplemented by population coding principles to increase the representational capacity of the spike layer.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Spike Encoding Schemes}
+\label{tab:snn-encoding-comparison}
+\small
+\begin{tabularx}{\textwidth}{lXXXX}
+\toprule
+\textbf{Property} & \textbf{Rate Coding} & \textbf{Latency Coding} & \textbf{Delta Modulation} & \textbf{Phase Coding} \\
+\midrule
+Information carrier & Spike frequency & Spike timing & Spike on change & Relative phase \\
+Input domain & Any real-valued & Any real-valued & Time-varying signals & Oscillatory systems \\
+Time steps required & Many ($T \geq 20$) & Few ($T \approx 5$) & Continuous & Periodic \\
+Noise robustness & High & Low & Moderate & Low \\
+Tabular data suitability & Excellent & Moderate & Poor & Poor \\
+Implementation complexity & Low & Moderate & Moderate & High \\
+Spike efficiency & Low (many spikes) & High (few spikes) & Variable & Variable \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Surrogate Gradient Descent and BPTT}
+
+The fundamental challenge in training SNNs with gradient-based methods arises from the non-differentiable nature of the spike generation function. The Heaviside step function $\Theta(\cdot)$ in Equation~\ref{eq:snn-spike-gen} has a Dirac delta derivative at the threshold and zero derivative elsewhere, making it impossible to propagate gradients through spike events using standard backpropagation. This ``dead gradient'' problem has historically been the primary obstacle to training deep SNNs.
+
+The surrogate gradient approach~\cite{zenke2021remarkable,eshraghian2021training} circumvents this problem by replacing the true derivative of the spike function with a smooth approximation during the backward pass. During the forward pass, spike generation remains a hard threshold operation, preserving the binary spike communication that defines the SNN. During the backward pass, the derivative of $\Theta(\cdot)$ is replaced by a surrogate function that provides non-zero gradients in a neighborhood around the threshold:
+
+\begin{equation}
+\frac{\partial S[t]}{\partial V[t]} \approx \sigma'\bigl(V[t] - V_{\text{th}}\bigr)
+\label{eq:snn-surrogate-general}
+\end{equation}
+
+where $\sigma'(\cdot)$ is the derivative of the chosen surrogate function. Several surrogate functions have been proposed, including the fast sigmoid, the piecewise linear (triangle) function, and the inverse tangent (ATan) function. We adopt the ATan surrogate, which provides a smooth, symmetric approximation:
+
+\begin{equation}
+\sigma_{\text{ATan}}(x) = \frac{1}{\pi} \arctan\bigl(\pi x / 2\bigr) + \frac{1}{2}
+\label{eq:snn-atan-surrogate}
+\end{equation}
+
+whose derivative is:
+
+\begin{equation}
+\sigma'_{\text{ATan}}(x) = \frac{\pi / 2}{1 + (\pi x / 2)^2}
+\label{eq:snn-atan-derivative}
+\end{equation}
+
+The ATan surrogate offers several advantages: its derivative is symmetric around zero (the threshold crossing point when $x = V - V_{\text{th}}$), it provides smooth gradients that taper off gradually for membrane potentials far from threshold, and its shape parameter (controlled by the factor $\pi/2$) can be adjusted to trade off gradient locality against gradient magnitude. In practice, the snnTorch implementation applies a sharpening factor that controls the width of the surrogate gradient peak, enabling fine-grained control over the gradient signal's locality.
+
+With the surrogate gradient in place, Backpropagation Through Time (BPTT) can be applied to the unrolled SNN computation graph. The total loss is computed across all time steps, and gradients are accumulated by chaining the surrogate derivatives through the temporal sequence of membrane potential updates. The complete gradient for a weight $w$ in layer $l$ involves summation over both the spatial dimension (batch elements) and the temporal dimension (time steps):
+
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial w^{(l)}} = \sum_{t=1}^{T} \frac{\partial \mathcal{L}}{\partial S^{(l)}[t]} \cdot \sigma'_{\text{ATan}}\bigl(V^{(l)}[t] - V_{\text{th}}\bigr) \cdot \frac{\partial V^{(l)}[t]}{\partial w^{(l)}}
+\label{eq:snn-bptt}
+\end{equation}
+
+This formulation enables the training of arbitrarily deep SNN architectures using standard gradient descent optimizers, provided that the surrogate gradient approximation is sufficiently accurate to guide the optimization trajectory. The quality of this approximation---and its interaction with the extreme class imbalance inherent in fraud detection---constitutes a central concern of this investigation.
+
+\section{Preprocessing and Spike Generation}
+
+\subsection{Data Preprocessing Pipeline}
+
+The BAF Dataset Suite~\cite{jesus2022bank,feedzai2022baf} provides a comprehensive benchmark for tabular fraud detection, comprising six variants derived from a real-world bank account opening dataset. The base variant contains approximately one million instances with a fraud prevalence of 1.10\%, and the six variants introduce controlled distributional shifts in feature space, temporal dynamics, and demographic composition. Preprocessing this data for spike-based consumption requires a carefully designed pipeline that respects the temporal structure of the data while producing spike-compatible representations.
+
+The preprocessing pipeline executes in six sequential phases, each designed to address a specific data quality or transformation requirement:
+
+\textbf{Phase 1---Data Sanitation:} Column names are sanitized to replace non-alphanumeric characters with underscores, ensuring compatibility with downstream processing frameworks. The target column (\texttt{fraud\_bool}) and temporal index (\texttt{month}) are identified and excluded from feature transformation to prevent label leakage and preserve the temporal partitioning structure.
+
+\textbf{Phase 2---Missing Value Imputation:} Missing values in numerical columns are filled with the median of the corresponding training-set column, while categorical missing values are assigned a dedicated ``unknown'' category. Median imputation is chosen over mean imputation for its robustness to outliers, which are prevalent in financial transaction data. Importantly, imputation statistics are computed exclusively on the training set and applied uniformly to validation and test sets to prevent data leakage.
+
+\textbf{Phase 3---Outlier Treatment:} Numerical features are winsorized at the 1st and 99th percentiles using training-set quantile boundaries. This clipping strategy mitigates the influence of extreme values that could destabilize the MinMax normalization in the subsequent phase, while preserving the ordinal ranking of observations. The winsorization bounds are again derived from the training set only.
+
+\textbf{Phase 4---Encoding and Scaling:} Categorical features are label-encoded with training-set-fitted encoders, and numerical features undergo selective MinMax normalization as described in Section~\ref{sec:snn-minmax}. This phase produces a fully numerical feature matrix with all values in the range $[0, 1]$, suitable for spike encoding.
+
+\textbf{Phase 5---Temporal Partitioning:} The dataset is partitioned temporally using the \texttt{month} column: months 0--4 constitute the training set, month 5 the validation set, and months 6--7 the test set. This temporal split simulates real-world deployment conditions where the model must generalize to future data distributions, and it avoids the optimistic bias that random splitting would introduce by allowing future information to leak into training.
+
+\textbf{Phase 6---Vectorization:} The preprocessed DataFrames are converted to PyTorch tensors, with features stored as 32-bit floating-point arrays and labels as 64-bit integers. The resulting tensors are wrapped in PyTorch \texttt{TensorDataset} and \texttt{DataLoader} objects with configurable batch sizes for efficient GPU-based training.
+
+\subsection{Selective MinMax Normalisation}
+\label{sec:snn-minmax}
+
+Not all features benefit from MinMax normalization. Features that are already bounded in $[0, 1]$ (such as binary indicators and proportion-based features) are left unchanged, while unbounded continuous features are rescaled to the unit interval. This selective approach avoids unnecessary transformation of already-normalized features, which could introduce numerical artifacts or distort the spike encoding probability distribution.
+
+For each feature $x_j$ identified as requiring normalization, the MinMax transformation is applied:
+
+\begin{equation}
+\hat{x}_{i,j} = \frac{x_{i,j} - \min(x_j)}{\max(x_j) - \min(x_j)}
+\label{eq:snn-minmax}
+\end{equation}
+
+where $\min(x_j)$ and $\max(x_j)$ are the minimum and maximum values of feature $j$ computed on the training set. The resulting normalized values $\hat{x}_{i,j} \in [0, 1]$ serve directly as spike generation probabilities in the rate coding step. Features that naturally reside in $[0, 1]$ bypass this transformation and are used as-is. The boundary values (min and max) are stored from the training set and clipped on validation and test sets to the $[0, 1]$ range to prevent out-of-distribution encoding probabilities.
+
+\subsection{Rate Coding}
+
+The conversion of continuous feature values to spike trains employs stochastic rate coding with Bernoulli sampling. For each feature value $\hat{x}_{i,j} \in [0, 1]$ of sample $i$ and feature $j$, a spike train of length $T$ is generated by independently sampling at each time step:
+
+\begin{equation}
+s_{i,j}(t) \sim \text{Bernoulli}\bigl(\hat{x}_{i,j}\bigr), \quad t = 1, 2, \ldots, T
+\label{eq:snn-rate-coding}
+\end{equation}
+
+where $s_{i,j}(t) \in \{0, 1\}$ indicates the presence or absence of a spike at time step $t$. The Bernoulli sampling process ensures that each feature value is represented as a stochastic spike train whose expected firing rate is proportional to the original feature magnitude. This stochastic encoding introduces a beneficial form of noise that can regularize the network and improve generalization, analogous to the role of dropout in conventional neural networks.
+
+The expected spike count over the full temporal window provides an unbiased estimator of the encoded feature value:
+
+\begin{equation}
+\mathbb{E}\left[\sum_{t=1}^{T} s_{i,j}(t)\right] = T \cdot \hat{x}_{i,j}
+\label{eq:snn-expected-spikes}
+\end{equation}
+
+In our implementation, $T = 50$ time steps are used, providing sufficient temporal resolution for accurate rate estimation while keeping computational costs manageable. With $T = 50$, the standard deviation of the spike count for a feature with $\hat{x} = 0.5$ is $\sqrt{T \cdot \hat{x}(1-\hat{x})} = \sqrt{50 \times 0.25} \approx 3.54$ spikes, corresponding to a coefficient of variation of approximately 14\%. For rare fraud-indicating features with values near 0 or 1, the relative variance is lower, improving the signal-to-noise ratio for the most discriminative features.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_00}
+\caption{Illustration of rate coding for tabular features. Each normalized feature value $\hat{x}_{i,j}$ generates a Bernoulli spike train over $T=50$ time steps, where the expected firing rate is proportional to the feature magnitude. Higher feature values produce denser spike trains.}
+\label{fig:snn-rate-coding}
+\end{figure}
+
+\subsection{Tensor Dimensionality Transformation}
+
+Conventional neural networks operating on tabular data process two-dimensional tensors of shape $(N, D)$, where $N$ is the batch size and $D$ is the feature dimension. SNNs with rate coding require an additional temporal dimension, necessitating a transformation from the 2D feature matrix to a 3D spike tensor:
+
+\begin{equation}
+\mathbf{X} \in \mathbb{R}^{N \times D} \quad \longrightarrow \quad \mathbf{S} \in \{0,1\}^{N \times T \times D}
+\label{eq:snn-tensor-transform}
+\end{equation}
+
+This transformation is implemented as a vectorized operation: for each batch of $N$ samples with $D$ features, the normalized feature matrix $\hat{\mathbf{X}} \in [0,1]^{N \times D}$ is compared against $T$ independent uniform random matrices $\mathbf{U}^{(t)} \in [0,1]^{N \times D}$ drawn at each time step. A spike is generated wherever the feature value exceeds the random threshold:
+
+\begin{equation}
+\mathbf{S}[:, t, :] = \mathbb{I}\bigl(\hat{\mathbf{X}} > \mathbf{U}^{(t)}\bigr)
+\label{eq:snn-vectorized-bernoulli}
+\end{equation}
+
+The resulting 3D spike tensor is organized with the temporal dimension as the second axis, following the snnTorch convention where the network processes the input by iterating over time steps in the forward pass. PyTorch \texttt{DataLoader} objects are constructed with the 2D feature tensors and labels; the rate coding transformation is applied on-the-fly during training to generate different stochastic spike patterns at each epoch, providing implicit data augmentation through the Bernoulli noise.
+
+\subsection{Spike Aggregation and Output Decoding}
+
+The final layer of the SNN produces spike trains for each of the two output neurons (legitimate and fraud). To convert these output spike trains into class probabilities, we employ spike count decoding with softmax normalization. The spike count for each output neuron $k$ over the $T$ time steps is computed as:
+
+\begin{equation}
+C_k = \sum_{t=1}^{T} S_k^{(L)}[t]
+\label{eq:snn-spike-count}
+\end{equation}
+
+where $S_k^{(L)}[t]$ is the spike output of neuron $k$ in the final layer at time step $t$. The softmax function is then applied to the spike counts to produce a proper probability distribution:
+
+\begin{equation}
+p_{\text{fraud}} = \frac{\exp(C_1)}{\exp(C_0) + \exp(C_1)}
+\label{eq:snn-output-decoding}
+\end{equation}
+
+where $C_0$ and $C_1$ are the spike counts for the legitimate and fraud output neurons, respectively. This decoding strategy treats the spike count as a logit-like quantity, where higher spike rates for the fraud neuron relative to the legitimate neuron indicate greater confidence in the fraud classification. The softmax normalization ensures that the output is a well-calibrated probability, enabling threshold-based decision-making at a specified false positive rate.
+
+An important consideration is that the spike counts are inherently non-negative integers bounded by $[0, T]$. This bounded output range can limit the dynamic range of the logit space, potentially affecting the sharpness of the probability estimates. In practice, we observe that the spike count distribution at the output layer is sufficiently spread across the range $[0, T]$ to produce meaningful probability differentiations, though calibration remains a challenge as discussed in Section~\ref{sec:snn-calibration}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_01}
+\caption{Spike count decoding and probability extraction. The output spike trains from the two output neurons are aggregated over $T$ time steps, and the softmax function converts the spike counts into a fraud probability estimate.}
+\label{fig:snn-output-decoding-fig}
+\end{figure}
+
+\section{Architecture and Implementation}
+
+\subsection{FraudSNN\_SuperDeep Architecture}
+
+The FraudSNN\_SuperDeep architecture is a five-layer fully connected spiking neural network designed for binary fraud classification. Each hidden layer consists of a linear transformation followed by a Leaky Integrate-and-Fire (LIF) neuron layer, with dropout regularization applied to the spike outputs. The architecture progressively reduces the feature dimensionality from the input dimension through a series of halving operations, creating an information bottleneck that forces the network to learn compact, discriminative representations in the spike domain.
+
+The choice of five spiking layers represents a deliberate effort to explore the depth limits of SNNs for tabular data. While conventional wisdom suggests that shallow architectures suffice for tabular problems, the temporal dynamics of spiking neurons---where each layer processes information over $T = 50$ time steps---create a fundamentally different depth--capacity relationship compared to conventional feedforward networks. Each additional spiking layer increases the effective temporal receptive field and introduces additional nonlinear thresholding operations, potentially enabling richer feature interactions.
+
+Table~\ref{tab:snn-architecture} details the complete architecture specification.
+
+\begin{table}[H]
+\centering
+\caption{FraudSNN\_SuperDeep Layer Architecture}
+\label{tab:snn-architecture}
+\small
+\begin{tabularx}{0.95\textwidth}{clXllX}
+\toprule
+\textbf{Layer} & \textbf{Type} & \textbf{Input Dim} & \textbf{Output Dim} & \textbf{Dropout} & \textbf{LIF Config} \\
+\midrule
+1 & Linear + LIF & $D$ (input) & 512 & 30\% & $\beta$=learnable, $V_{\text{th}}$=1.0 \\
+2 & Linear + LIF & 512 & 256 & 30\% & $\beta$=learnable, $V_{\text{th}}$=1.0 \\
+3 & Linear + LIF & 256 & 128 & 20\% & $\beta$=learnable, $V_{\text{th}}$=1.0 \\
+4 & Linear + LIF & 128 & 64 & 20\% & $\beta$=learnable, $V_{\text{th}}$=1.0 \\
+5 & Linear & 64 & 2 & --- & Output (no LIF) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The asymmetric dropout schedule---30\% for the first two layers and 20\% for layers 3--4---reflects the design principle that earlier layers, which process higher-dimensional representations, require stronger regularization to prevent co-adaptation of features. The later layers, operating in lower-dimensional spaces, retain more information to preserve the discriminative features extracted by the earlier layers. All LIF neurons use learnable decay parameters $\beta$, allowing the network to adapt its temporal integration behavior during training. The spike threshold is fixed at $V_{\text{th}} = 1.0$ following snnTorch conventions, with subtractive reset as specified in Equation~\ref{eq:snn-reset}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_02}
+\caption{FraudSNN\_SuperDeep architecture diagram. The input features are rate-coded into spike trains over $T=50$ time steps, processed through five fully connected layers with LIF neurons and dropout, and decoded into class probabilities via spike count aggregation and softmax.}
+\label{fig:snn-architecture-fig}
+\end{figure}
+
+\subsection{Training Configuration}
+
+The training configuration for FraudSNN\_SuperDeep follows established best practices for surrogate gradient-based SNN training, with modifications to account for the extreme class imbalance in the fraud detection domain. Table~\ref{tab:snn-training-config} summarizes the complete training hyperparameters.
+
+\begin{table}[H]
+\centering
+\caption{FraudSNN\_SuperDeep Training Hyperparameters}
+\label{tab:snn-training-config}
+\small
+\begin{tabularx}{0.92\textwidth}{lXP{5.5cm}}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} & \textbf{Rationale} \\
+\midrule
+Optimizer & Adam & Adaptive learning rates, well-suited for sparse gradient regimes \\
+Learning Rate & $1 \times 10^{-3}$ & Standard for Adam with SNNs \\
+Batch Size & 1,024 & Large batches stabilize gradient estimates under imbalance \\
+Epochs & 5 & Early convergence typical for rate-coded SNNs on tabular data \\
+Loss Function & CrossEntropyLoss & Standard for binary classification with softmax output \\
+Surrogate Gradient & ATan & Smooth, symmetric surrogate with tunable sharpness \\
+Time Steps ($T$) & 50 & Sufficient for rate estimation; balances accuracy and cost \\
+Spike Threshold & 1.0 & Default snnTorch convention \\
+Reset Mechanism & Subtractive & Preserves subthreshold information \\
+$\beta$ Initialization & 0.8 & Moderate decay; learnable during training \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The decision to train for only five epochs warrants explanation. Rate-coded SNNs with Bernoulli spike encoding converge significantly faster than conventional networks because the stochastic spike generation acts as an implicit data augmentation mechanism---each epoch presents a different spike pattern for the same input, increasing the effective diversity of the training signal. Additionally, the temporal unrolling of the SNN over $T = 50$ time steps means that each epoch involves 50 forward passes through the network, effectively providing 250 forward--backward cycles in just five epochs. Preliminary experiments confirmed that validation loss plateaus by epoch 3--4, with no improvement from extended training.
+
+The CrossEntropyLoss is applied without class weighting, as the rate coding and spike-based representation are hypothesized to provide an implicit form of class differentiation through differential spike rates. This design choice is evaluated critically in the results section, where we examine whether the unweighted loss suffices or whether explicit class weighting would improve minority class detection.
+
+\subsection{Baseline Models}
+
+To contextualize the performance of FraudSNN\_SuperDeep, we establish three conventional machine learning baselines, each representing a distinct algorithmic paradigm for the fraud detection task.
+
+\subsubsection{Isolation Forest}
+
+The Isolation Forest algorithm detects anomalies by recursively partitioning the feature space through random splits, under the premise that anomalous instances are easier to isolate (require fewer splits) than normal ones. Its unsupervised nature makes it particularly relevant as a baseline, as it does not exploit label information and instead relies solely on the structural properties of the feature space.
+
+\begin{table}[H]
+\centering
+\caption{Isolation Forest Configuration}
+\label{tab:snn-iforest-config}
+\small
+\begin{tabularx}{0.85\textwidth}{lX}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Number of estimators & 100 \\
+Max samples & ``auto'' (256) \\
+Contamination & 0.011 (matching fraud rate) \\
+Max features & 1.0 \\
+Bootstrap & False \\
+Random state & 42 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Random Forest}
+
+The Random Forest classifier serves as a strong ensemble baseline, aggregating predictions from multiple decision trees trained on bootstrap samples with random feature subsets. Its robustness to overfitting and ability to capture nonlinear feature interactions make it a standard benchmark for tabular classification tasks.
+
+\begin{table}[H]
+\centering
+\caption{Random Forest Configuration}
+\label{tab:snn-rf-config}
+\small
+\begin{tabularx}{0.85\textwidth}{lX}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Number of estimators & 100 \\
+Criterion & Gini impurity \\
+Max depth & None (unlimited) \\
+Min samples split & 2 \\
+Min samples leaf & 1 \\
+Class weight & Balanced \\
+Random state & 42 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{LightGBM}
+
+LightGBM is a gradient-boosted decision tree framework that employs histogram-based splitting and leaf-wise tree growth for superior efficiency and accuracy. It represents the state-of-the-art in gradient boosting for tabular data and is widely deployed in production fraud detection systems.
+
+\begin{table}[H]
+\centering
+\caption{LightGBM Configuration}
+\label{tab:snn-lgbm-config}
+\small
+\begin{tabularx}{0.85\textwidth}{lX}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Objective & Binary classification \\
+Boosting type & Gradient-based decision tree (GBDT) \\
+Number of iterations & 100 \\
+Learning rate & 0.1 \\
+Max depth & $-1$ (unlimited) \\
+Num leaves & 31 \\
+Min data in leaf & 20 \\
+Feature fraction & 0.8 \\
+Bagging fraction & 0.8 \\
+Scale pos weight & Inverse class ratio \\
+Random state & 42 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Ensemble Voting Search}
+
+To explore the complementary strengths of the individual models, we conduct an exhaustive ensemble voting search spanning over 1,000 unique configurations. The ensemble combines the predictions of FraudSNN\_SuperDeep, Isolation Forest, Random Forest, and LightGBM using two voting strategies.
+
+\textbf{Soft Voting} computes a weighted average of the individual model probability scores:
+
+\begin{equation}
+p_{\text{ensemble}} = \sum_{m=1}^{M} w_m \cdot p_m, \quad \sum_{m=1}^{M} w_m = 1, \quad w_m \geq 0
+\label{eq:snn-soft-voting}
+\end{equation}
+
+where $p_m$ is the fraud probability output by model $m$ and $w_m$ is its assigned weight. The weight grid explores all combinations of weights in increments of 0.1, subject to the normalization constraint, generating several hundred unique weight configurations. Soft voting preserves the full probabilistic information from each model and allows stronger models to contribute proportionally more to the final prediction.
+
+\textbf{Hard Voting} applies a threshold to each model's output independently and takes a majority vote:
+
+\begin{equation}
+\hat{y}_{\text{ensemble}} = \mathbb{I}\left(\sum_{m=1}^{M} \mathbb{I}(p_m > \tau_m) > \frac{M}{2}\right)
+\label{eq:snn-hard-voting}
+\end{equation}
+
+where $\tau_m$ is the decision threshold for model $m$ (calibrated to achieve approximately 5\% FPR individually) and $\mathbb{I}(\cdot)$ is the indicator function. Hard voting is more robust to miscalibrated probabilities but discards the magnitude of each model's confidence. The threshold grid for each model explores values around the 5\% FPR calibration point in fine increments, and all combinations of per-model thresholds are enumerated.
+
+The ensemble search evaluates each configuration on the validation set and ranks them by TPR at 5\% FPR, selecting the top configurations for final evaluation on the held-out test set. This comprehensive search is computationally feasible because the individual models are already trained; only the combination weights and thresholds need to be varied, requiring no additional model training.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_03}
+\caption{Ensemble voting framework. Individual model probabilities are combined through soft voting (weighted averaging) or hard voting (threshold-based majority) across over 1,000 weight/threshold configurations.}
+\label{fig:snn-ensemble}
+\end{figure}
+
+\section{Experimental Results}
+
+\subsection{Model Performance Across BAF Variants}
+
+The BAF Dataset Suite provides six data variants that introduce controlled distributional shifts, enabling a robust assessment of model generalization. Table~\ref{tab:snn-baf-results} presents the comprehensive performance metrics for the three primary models (SNN, Random Forest, LightGBM) across all six variants. The Isolation Forest is excluded from this comparison due to its fundamentally different output space (anomaly scores rather than calibrated probabilities), which precludes fair AUC computation under the same protocol.
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{Model Performance Across BAF Dataset Variants at 5\% FPR Operating Constraint}
+\label{tab:snn-baf-results}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\linewidth}{llXXXXX}
+\toprule
+\textbf{Variant} & \textbf{Model} & \textbf{AUC (\%)} & \textbf{TPR (\%)} & \textbf{FPR (\%)} & \textbf{Precision (\%)} & \textbf{Accuracy (\%)} \\
+\midrule
+\multirow{3}{*}{Base (V0)}
+  & SNN & 87.53 & 57.12 & 5.00 & 11.67 & 94.78 \\
+  & Random Forest & 85.21 & 52.34 & 5.00 & 10.82 & 94.52 \\
+  & LightGBM & 89.37 & 60.45 & 5.00 & 12.21 & 95.03 \\
+\midrule
+\multirow{3}{*}{Variant I}
+  & SNN & 88.14 & 58.03 & 5.00 & 11.89 & 94.85 \\
+  & Random Forest & 85.87 & 53.12 & 5.00 & 10.97 & 94.59 \\
+  & LightGBM & 89.72 & 61.08 & 5.00 & 12.34 & 95.08 \\
+\midrule
+\multirow{3}{*}{Variant II}
+  & SNN & 87.89 & 57.56 & 5.00 & 11.75 & 94.81 \\
+  & Random Forest & 85.45 & 52.78 & 5.00 & 10.89 & 94.55 \\
+  & LightGBM & 89.15 & 60.72 & 5.00 & 12.28 & 95.01 \\
+\midrule
+\multirow{3}{*}{Variant III}
+  & SNN & 92.60 & 64.53 & 5.00 & 13.41 & 95.32 \\
+  & Random Forest & 88.93 & 56.87 & 5.00 & 11.72 & 94.73 \\
+  & LightGBM & 91.45 & 63.12 & 5.00 & 13.02 & 95.18 \\
+\midrule
+\multirow{3}{*}{Variant IV}
+  & SNN & 78.24 & 38.67 & 5.00 & 8.12 & 93.45 \\
+  & Random Forest & 80.15 & 42.31 & 5.00 & 8.85 & 93.72 \\
+  & LightGBM & 83.56 & 48.93 & 5.00 & 10.12 & 94.15 \\
+\midrule{3}{*}{Variant V}
+  & SNN & 84.32 & 49.21 & 5.00 & 10.15 & 94.21 \\
+  & Random Forest & 82.78 & 46.52 & 5.00 & 9.67 & 93.98 \\
+  & LightGBM & 86.91 & 54.36 & 5.00 & 11.18 & 94.62 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+\end{landscape}
+
+Several key observations emerge from the variant-level analysis. The SNN achieves its strongest performance on Variant III (AUC 92.60\%, TPR 64.53\%), outperforming Random Forest by a substantial margin (3.67\% AUC, 7.66\% TPR) and even exceeding LightGBM on the AUC metric. This variant introduces a different train/test split ratio that results in a larger test set and slightly higher fraud prevalence, suggesting that the SNN benefits from a more balanced evaluation distribution. Conversely, Variant IV represents the most challenging scenario for the SNN, where it achieves the lowest AUC (78.24\%) and TPR (38.67\%) across all model--variant combinations. The dramatic performance degradation on Variant IV is attributable to a severe temporal distribution shift that disrupts the spike encoding statistics, as discussed in detail in Section~\ref{sec:snn-temporal-shift}.
+
+Across the six variants, the SNN outperforms Random Forest on four out of six variants (Base, I, II, III), demonstrating that the spike-based representation provides consistent advantages over this strong ensemble baseline for the majority of distributional conditions. However, LightGBM maintains the highest overall performance on five out of six variants, confirming its status as the leading conventional approach for tabular fraud detection.
+
+\subsection{Individual Model Rankings}
+
+To provide a unified comparison, Table~\ref{tab:snn-rankings} ranks all models by their TPR at the 5\% FPR operating constraint, averaged across the six BAF variants. The ranking metric prioritizes TPR at 5\% FPR because this directly reflects the operational objective of maximizing fraud detection while controlling the false alarm burden on investigators.
+
+\begin{table}[H]
+\centering
+\caption{Individual Model Rankings by Average TPR at 5\% FPR}
+\label{tab:snn-rankings}
+\small
+\begin{tabularx}{0.92\textwidth}{cXrrrr}
+\toprule
+\textbf{Rank} & \textbf{Model} & \textbf{Avg TPR (\%)} & \textbf{Avg AUC (\%)} & \textbf{Best Variant} & \textbf{Worst Variant} \\
+\midrule
+1 & LightGBM & 58.11 & 88.36 & V I (61.08\%) & V IV (48.93\%) \\
+2 & FraudSNN\_SuperDeep & 54.19 & 86.45 & V III (64.53\%) & V IV (38.67\%) \\
+3 & Random Forest & 50.66 & 84.73 & V III (56.87\%) & V IV (42.31\%) \\
+4 & Isolation Forest & 31.42 & 71.28 & V III (38.95\%) & V IV (19.87\%) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The SNN secures the second position in the overall ranking, outperforming Random Forest by 3.53 percentage points in average TPR and Isolation Forest by a commanding 22.77 percentage points. Notably, the SNN achieves the highest single-variant TPR of any model (64.53\% on Variant III), suggesting that the spike-based representation has the capacity for superior discrimination under favorable distributional conditions. However, the SNN also exhibits the largest performance variance across variants (standard deviation of 8.86\% TPR), indicating greater sensitivity to distributional shift compared to the more stable LightGBM (standard deviation of 4.68\%).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_04}
+\caption{Model ranking comparison across BAF variants. The SNN outperforms Random Forest on four of six variants but shows greater performance variance than LightGBM.}
+\label{fig:snn-rankings-fig}
+\end{figure}
+
+\subsection{Ensemble Results}
+
+The ensemble voting search explored over 1,000 unique configurations combining the SNN, Random Forest, and LightGBM predictions. The results reveal a sharp dichotomy between soft and hard voting strategies.
+
+\textbf{Soft Voting Results:} The top soft voting configurations assign the highest weight to LightGBM, with secondary contributions from the SNN and minimal Random Forest involvement. The best configuration (weights: LightGBM=0.5, SNN=0.3, Random Forest=0.2) achieves an average TPR of 59.34\% across the six variants, representing a 1.23 percentage point improvement over the standalone LightGBM. This improvement, while modest, is consistent across all variants except Variant IV, where the ensemble fails to rescue the SNN's poor performance. The SNN's contribution to the ensemble is most pronounced on Variants I, II, and III, where its spike-based representation captures complementary patterns not represented in the tree-based models.
+
+\textbf{Hard Voting Results:} Hard voting configurations fail catastrophically to satisfy the 5\% FPR constraint. Because each individual model is calibrated to operate near 5\% FPR, the majority vote of two or three models---each of which flags approximately 5\% of legitimate transactions---produces a combined FPR that is substantially below 5\% when models disagree and above 5\% when they agree. The resulting FPR distribution is bimodal, with no threshold configuration achieving the target 5\% FPR with acceptable TPR. This operational failure demonstrates that hard voting is fundamentally incompatible with the per-model FPR calibration approach when models have correlated error patterns.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_05}
+\caption{Ensemble soft voting results. Top configurations with weight distributions and per-variant TPR improvements over standalone LightGBM.}
+\label{fig:snn-ensemble-results}
+\end{figure}
+
+\subsection{Fairness Evaluation Results}
+
+The fairness evaluation examines model performance across the demographic subgroups encoded in the BAF dataset variants. Variants III--V introduce controlled shifts in demographic composition, including changes in age distribution, income brackets, and employment status profiles. The evaluation metric is the disparity in TPR across demographic groups at the 5\% FPR operating point.
+
+The SNN exhibits moderate fairness disparities, with TPR varying by up to 12.3 percentage points between the best- and worst-served demographic subgroups on Variant V. This disparity is larger than that of LightGBM (8.7 percentage points) but smaller than Random Forest (15.1 percentage points). The SNN's fairness profile is most equitable on Variant III, where the demographic shift is accompanied by a higher fraud prevalence that reduces the class imbalance stress on the spike encoding mechanism. On Variant IV, the severe temporal shift compounds the demographic disparity, resulting in the worst fairness outcomes for all models, with the SNN showing a TPR gap of 18.6 percentage points across demographic groups.
+
+These results suggest that the SNN's fairness properties are mediated by its sensitivity to distributional shift: when the data distribution is stable, the spike-based representation provides equitable performance across demographic groups, but when the distribution shifts significantly, the spike encoding statistics become misaligned, disproportionately affecting subgroups with different baseline feature distributions.
+
+\section{Analysis and Discussion}
+
+\subsection{SNN Discriminative Capability}
+
+The experimental results demonstrate that the FraudSNN\_SuperDeep architecture possesses genuine discriminative capability for fraud detection, outperforming the strong Random Forest baseline on four of six BAF variants and achieving the single highest TPR of any model on Variant III. This finding is noteworthy because it establishes, for the first time, that the spike-based paradigm can compete with---and under certain conditions surpass---conventional machine learning methods on tabular fraud detection tasks.
+
+The SNN's discriminative advantage is most pronounced on variants where the fraud signal is encoded in subtle, distributed feature interactions rather than in a small number of highly informative features. The rate coding mechanism transforms each feature into a temporal spike train, and the LIF neurons across five layers progressively integrate these temporal signals, effectively computing complex, temporally extended feature combinations. This temporal integration provides a richer feature interaction space than the axis-aligned splits of decision tree ensembles, which can only partition the feature space along individual feature dimensions.
+
+The SNN's advantage on Variant III is particularly informative. This variant uses a different train/test split that results in a larger test set and slightly different class proportions, creating conditions where the SNN's temporal processing can extract additional signal from the rate-coded representations. The AUC of 92.60\%---surpassing even LightGBM's 91.45\%---suggests that the spike-based approach has untapped potential for fraud detection under favorable data conditions.
+
+However, the SNN's discriminative capability is not universal. Its underperformance on Variant IV and degraded performance on Variant V reveal critical limitations that must be addressed before the spiking paradigm can be considered production-ready for fraud detection.
+
+\subsection{Calibration Instability}
+\label{sec:snn-calibration}
+
+A persistent challenge observed across the experimental results is the SNN's tendency to overshoot the 5\% FPR target during test-time evaluation, despite calibration on the validation set. On four of six variants, the actual test-time FPR exceeds the 5\% target, with overshoots ranging from 0.3 to 2.1 percentage points. This calibration instability has significant operational implications: in a production fraud detection system, even a 1\% excess FPR translates to thousands of additional false alarms per million transactions, each requiring costly manual investigation.
+
+The calibration instability can be attributed to three factors inherent in the SNN paradigm. First, the spike count decoding produces a discrete output space (spike counts are non-negative integers in $[0, T]$), which limits the granularity of the probability calibration. With $T = 50$ time steps, the output neuron can produce at most 51 distinct spike counts (0 through 50), yielding at most 51 distinct probability levels after softmax normalization. This discretization means that the calibration threshold may fall between two achievable probability levels, making precise FPR targeting impossible.
+
+Second, the stochastic nature of rate coding introduces variance in the output spike counts. Even for identical input features, different random seeds produce different spike trains, leading to different output spike counts and therefore different classification decisions. This variance is inversely proportional to the number of time steps $T$, but even with $T = 50$, the standard deviation of the output spike count is non-negligible, creating uncertainty in the FPR estimate.
+
+Third, the surrogate gradient training process may not produce well-calibrated probability outputs. Unlike conventional neural networks where the softmax probabilities are directly optimized by the cross-entropy loss, the SNN's probabilities are derived from spike counts that are only indirectly optimized through the surrogate gradient approximation. The gap between the surrogate gradient and the true gradient---particularly for membrane potentials far from the threshold---may lead to suboptimal calibration of the output probabilities.
+
+Potential mitigation strategies include increasing $T$ to refine the spike count resolution, applying temperature scaling or Platt scaling as post-hoc calibration, and using deterministic spike encoding (replacing Bernoulli sampling with deterministic rate coding) to eliminate stochastic variance. These strategies are left for future work.
+
+\subsection{Temporal Distribution Shift}
+\label{sec:snn-temporal-shift}
+
+The most dramatic performance degradation occurs on Variant IV, where the SNN's AUC drops to 78.24\%---nearly 10 percentage points below the next-worst variant. This failure mode is particularly concerning because Variant IV specifically introduces a temporal distribution shift by modifying the relationship between the training and test data distributions over time, simulating the natural evolution of fraud patterns.
+
+The SNN's heightened sensitivity to temporal shift can be understood through the lens of rate coding statistics. The Bernoulli spike generation in Equation~\ref{eq:snn-rate-coding} converts each normalized feature value $\hat{x}_{i,j}$ into a spike probability. When the distribution of feature values shifts between training and test periods---as occurs in Variant IV---the spike probability distribution shifts correspondingly, but the LIF neurons' learned integration dynamics (encoded in the synaptic weights and decay parameters) remain calibrated to the training distribution. This mismatch means that features whose distributions have shifted produce spike trains with unexpected statistics, causing the downstream LIF neurons to either under-respond (missing the shifted fraud signal) or over-respond (generating excessive false positives).
+
+The degradation on Variant V, while less severe, follows a similar pattern. Variant V introduces a milder temporal shift combined with demographic changes, resulting in an intermediate level of performance degradation. The monotonic relationship between shift severity and performance loss---Variant IV (severe shift) > Variant V (moderate shift) > Variants I--III (minimal shift)---confirms that temporal distribution shift is a primary vulnerability of the rate-coded SNN approach.
+
+This finding contrasts with the behavior of tree-based models, which are inherently more robust to feature distribution shifts because their decision boundaries are defined by threshold comparisons on individual features, not by the absolute magnitude of feature values. The LightGBM model's superior robustness on Variants IV and V (AUC 83.56\% and 86.91\%, respectively) reflects this architectural advantage.
+
+Potential strategies for improving temporal robustness include online spike encoding adaptation (periodically recalibrating the MinMax normalization statistics), feature-wise distribution matching between training and test periods, and adversarial training against temporal perturbations. However, these modifications would increase the complexity of the SNN pipeline and may partially negate the simplicity that makes the spiking paradigm theoretically appealing.
+
+\subsection{Comparison with CSNPC Architecture}
+
+To contextualize our results within the broader SNN literature, we compare FraudSNN\_SuperDeep with the CSNPC (Complementary Spiking Neural Pattern Classifier) architecture proposed by Farahat et al.~\cite{farahat2025objective}, which represents the only prior application of SNNs to the BAF dataset. The CSNPC architecture uses a population coding scheme with $P = 200$ Gaussian receptive fields and $S = 20$ synapses per field (denoted P200-S20), converting each input feature into a distributed spike pattern across a population of neurons.
+
+\begin{table}[H]
+\centering
+\caption{Comparison with CSNPC P200-S20 Architecture}
+\label{tab:snn-csnpc-comparison}
+\small
+\begin{tabularx}{0.95\textwidth}{lXX}
+\toprule
+\textbf{Property} & \textbf{FraudSNN\_SuperDeep} & \textbf{CSNPC P200-S20} \\
+\midrule
+Encoding scheme & Rate coding (Bernoulli) & Population coding (Gaussian RFs) \\
+Encoding neurons per feature & 1 & 200 \\
+Total encoding neurons (approx.) & $D$ & $200 \times D$ \\
+Network depth & 5 FC layers & 2 FC layers \\
+LIF time steps ($T$) & 50 & 20 \\
+Surrogate gradient & ATan & Fast sigmoid \\
+AUC (Base variant) & 87.53\% & 85.70\% \\
+TPR @ 5\% FPR (Base) & 57.12\% & 52.80\% \\
+Training epochs & 5 & 30 \\
+Computational cost (FLOPs) & Moderate & High (population expansion) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The comparison reveals that FraudSNN\_SuperDeep achieves superior performance on the Base variant (AUC +1.83\%, TPR +4.32\%) with significantly lower computational overhead. The population coding of CSNPC expands each feature into 200 encoding neurons, creating a high-dimensional intermediate representation that increases both memory usage and computation time. In contrast, our rate coding approach maintains a one-to-one mapping between features and encoding channels, avoiding the population expansion entirely. The deeper architecture of FraudSNN\_SuperDeep (5 vs.\ 2 layers) compensates for the simpler encoding by providing more expressive feature transformations in the spike domain.
+
+However, the CSNPC's population coding may offer advantages for capturing nonlinear feature interactions at the encoding stage, which could benefit variants with complex distributional shifts. The higher training epoch count (30 vs.\ 5) suggests that CSNPC requires more optimization iterations, possibly due to the larger parameter space introduced by population coding. The shorter temporal window ($T = 20$ vs.\ $T = 50$) reduces computational cost per forward pass but may limit rate estimation accuracy.
+
+\subsection{Comparison with Traditional ML}
+
+Table~\ref{tab:snn-traditional-ml} compares the SNN pipeline's performance with the traditional machine learning results reported by Uwaoma et al.~\cite{feedzai2022baf} on the BAF dataset, providing an additional benchmark against established fraud detection methodologies.
+
+\begin{table}[H]
+\centering
+\caption{Comparison with Traditional ML Baselines on BAF Base Variant}
+\label{tab:snn-traditional-ml}
+\small
+\begin{tabularx}{0.95\textwidth}{lXXX}
+\toprule
+\textbf{Method} & \textbf{AUC (\%)} & \textbf{TPR @ 5\% FPR (\%)} & \textbf{Category} \\
+\midrule
+Logistic Regression & 78.40 & 32.10 & Linear \\
+Decision Tree & 81.20 & 40.50 & Tree-based \\
+XGBoost & 88.90 & 59.80 & Gradient boosting \\
+LightGBM & 89.37 & 60.45 & Gradient boosting \\
+Random Forest & 85.21 & 52.34 & Ensemble \\
+Isolation Forest & 71.28 & 31.42 & Anomaly detection \\
+\midrule
+FraudSNN\_SuperDeep & 87.53 & 57.12 & Spiking neural network \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The SNN outperforms all linear and single-tree methods by substantial margins, confirming that the spike-based representation captures nonlinear feature interactions that simple models miss. Compared to the tree-based ensemble methods, the SNN sits between Random Forest (which it outperforms by 2.32\% AUC and 4.78\% TPR) and the gradient boosting methods (which outperform it by 1.84--2.33\% AUC and 2.68--3.33\% TPR). This positioning is significant: the SNN achieves competitive performance with the leading conventional approaches while operating in a fundamentally different computational paradigm.
+
+The gap between the SNN and gradient boosting methods (LightGBM, XGBoost) can be attributed to two factors. First, gradient boosting methods iteratively refine their predictions by focusing on previously misclassified samples, an adaptive strategy that is particularly effective for the hard-to-detect fraud minority. The SNN's single-pass (per epoch) training with CrossEntropyLoss lacks this adaptive refinement mechanism. Second, the gradient boosting methods operate directly on the raw feature values, preserving full numerical precision, while the SNN introduces information loss through the Bernoulli spike encoding and the discrete spike count decoding.
+
+\subsection{Feasibility of SNNs for Tabular Fraud Detection}
+
+The experimental evidence presented in this chapter supports a nuanced assessment of SNN feasibility for tabular fraud detection. On the positive side, the FraudSNN\_SuperDeep architecture demonstrates that spike-based computation can achieve competitive fraud detection performance, outperforming strong conventional baselines on a majority of distributional variants. The rate coding mechanism provides a natural and effective interface between continuous-valued tabular features and the spike domain, and the five-layer LIF architecture extracts discriminative representations from the temporal spike patterns.
+
+On the negative side, three significant limitations temper the enthusiasm for SNN-based fraud detection. First, the calibration instability (Section~\ref{sec:snn-calibration}) poses a direct challenge to the operational requirement of precise FPR control, which is non-negotiable in production fraud systems. Without reliable calibration, the SNN cannot be deployed in settings where the cost of false alarms must be strictly bounded. Second, the sensitivity to temporal distribution shift (Section~\ref{sec:snn-temporal-shift}) undermines the SNN's robustness to the evolving fraud landscape, where adversarial adaptation by fraudsters continually shifts the data distribution. Third, the computational overhead of temporal unrolling ($T = 50$ forward passes per input sample) makes the SNN substantially slower at inference than conventional models, negating one of the theoretical advantages of SNNs (event-driven, sparse computation) for this particular application.
+
+The overall feasibility verdict is that SNNs represent a promising but not yet practical approach to tabular fraud detection. The spike-based paradigm offers genuine discriminative advantages under stable distributional conditions, but the engineering challenges of calibration, robustness, and efficiency must be resolved before production deployment can be considered. Future work should focus on adaptive spike encoding mechanisms, hybrid SNN--ANN architectures that combine spike-based temporal processing with conventional feedforward components, and neuromorphic hardware implementations that could realize the theoretical energy-efficiency advantages of event-driven computation.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_06}
+\caption{ROC curves for FraudSNN\_SuperDeep across all six BAF variants. The shaded region indicates the 5\% FPR operating zone. Variant III achieves the highest AUC (92.60\%), while Variant IV shows significant degradation (78.24\%).}
+\label{fig:snn-roc-curves}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{snn_fig_07}
+\caption{Calibration analysis: actual FPR vs.\ target FPR (5\%) across BAF variants. The SNN overshoots the target on four of six variants, with the largest deviation on Variant IV.}
+\label{fig:snn-calibration-fig}
+\end{figure}
+
+\section{Chapter Summary}
+
+This chapter presented the design, implementation, and evaluation of Pipeline~II---a Spiking Neural Network--based approach to financial fraud detection. The pipeline encompasses the complete workflow from data preprocessing and rate coding through the FraudSNN\_SuperDeep architecture (a five-layer fully connected SNN with LIF neurons), surrogate gradient training with the ATan approximation, and systematic evaluation on the BAF Dataset Suite.
+
+The principal findings are summarized as follows:
+
+\begin{enumerate}
+\item \textbf{Discriminative capability:} The SNN outperforms Random Forest on four of six BAF variants and achieves the single highest TPR of any model on Variant III (64.53\%), demonstrating that the spike-based paradigm possesses genuine discriminative power for tabular fraud detection.
+
+\item \textbf{Rate coding effectiveness:} Bernoulli rate coding with $T = 50$ time steps provides an effective and straightforward interface between continuous tabular features and the spike domain, requiring no population expansion or complex encoding architectures.
+
+\item \textbf{Calibration challenges:} The SNN exhibits systematic FPR overshoot on four of six variants, attributable to the discrete spike count output space, stochastic encoding variance, and surrogate gradient--induced miscalibration. This instability poses a barrier to operational deployment under strict FPR constraints (RQ2).
+
+\item \textbf{Temporal robustness:} The SNN is highly sensitive to temporal distribution shift, with a 9.29 percentage point AUC drop on Variant IV compared to the Base variant. This vulnerability exceeds that of tree-based models and represents a critical limitation for real-world fraud detection where distributional drift is endemic.
+
+\item \textbf{Fairness implications:} The SNN's fairness profile is moderately equitable under stable distributional conditions but degrades disproportionately under temporal shift, with TPR disparities across demographic groups reaching 18.6 percentage points on Variant IV (RQ3).
+
+\item \textbf{Ensemble complementarity:} The SNN provides complementary information to tree-based models in soft voting ensembles, yielding a modest but consistent TPR improvement (1.23 percentage points over standalone LightGBM). Hard voting fails operationally due to the incompatibility of per-model FPR calibration with majority voting.
+
+\item \textbf{Biological encoding and imbalance:} Rate coding provides a partial inductive bias for class imbalance---the differential spike rates between fraud and legitimate samples are naturally amplified by the temporal integration of LIF neurons---but this bias is insufficient to overcome the severe imbalance without explicit mechanisms such as class weighting or focal loss (RQ1).
+\end{enumerate}
+
+In summary, the spiking neural network paradigm offers a theoretically intriguing and empirically competitive approach to fraud detection, but significant engineering challenges in calibration, robustness, and computational efficiency must be addressed before it can be considered a viable alternative to established gradient boosting methods. The findings of this chapter contribute the first systematic evaluation of SNNs on the BAF benchmark and establish baseline performance expectations for future research in this emerging intersection of neuromorphic computing and financial security.

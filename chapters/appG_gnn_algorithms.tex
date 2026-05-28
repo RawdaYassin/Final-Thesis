@@ -1,0 +1,132 @@
+\chapter{Graph Neural Network Algorithmic Procedures}
+\label{app:gnn-algorithms}
+
+This appendix provides the formal algorithmic descriptions of the two Graph Neural Network (GNN) architectures developed in this thesis: the Quantum-enhanced Graph Neural Network (QGNN) and the Split Graph Neural Network (SplitGNN). While Chapter~\ref{ch:pipeline-gnn} presents the architectural design, motivation, and empirical evaluation of these models, this appendix specifies the complete step-by-step procedures for forward propagation, loss computation, and parameter updates. The algorithms are presented in pseudocode form using the standard \texttt{algorithmic} notation, with precise mathematical formulations for each computational step. These descriptions are intended to serve as unambiguous references for reimplementation and to clarify the ordering of operations that may be difficult to discern from prose descriptions alone. All variable names and notation are consistent with the formulations presented in the main chapter.
+
+\section{Algorithm 1: Quantum GNN Forward Pass and Training}
+\label{app:qgnn-algorithm}
+
+The Quantum GNN integrates a Variational Quantum Circuit (VQC) layer into the message-passing framework of a Graph Neural Network. The VQC processes the node embeddings produced by classical MLP layers, applying parameterized quantum operations that can in principle explore exponentially large Hilbert spaces with a polynomial number of qubits. The training procedure alternates between classical forward propagation through the MLP and GNN layers, quantum circuit evaluation for feature transformation, and gradient-based parameter updates via backpropagation. The following algorithm describes the complete training loop for one epoch, including the quantum circuit evaluation at each GNN layer.
+
+The Quantum GNN forward pass proceeds as follows. Given an input graph $G = (V, E)$ with node features $\{x_u \mid u \in V\}$ and labels $\{y_u \mid u \in V\}$, the model first initializes the learnable parameters of the MLP classifier and the VQC layers. For each training epoch, a mini-batch of nodes is sampled, and the initial node embeddings are computed via a linear projection of the input features. The model then applies $L$ layers of message passing, each consisting of a VQC layer computation followed by neighbor aggregation. After the final layer, a classification head maps the node embeddings to fraud predictions, and the loss is computed with class-balanced weighting to account for the severe label imbalance in the BAF dataset. The AdamW optimizer with cosine annealing learning rate schedule is used for parameter updates. The detailed procedure is presented in Algorithm~\ref{alg:qgnn}.
+
+\begin{algorithm}[H]
+\caption{Quantum GNN Forward Pass and Training}
+\label{alg:qgnn}
+\begin{algorithmic}[1]
+\REQUIRE Graph $G = (V, E)$, node features $\{x_u \mid u \in V\}$, labels $\{y_u \mid u \in V\}$, VQC layers $L$, qubits $n_q$, learning rate $\eta$, pos\_weight $w_{\text{pos}}$, weight decay $\lambda$
+\ENSURE Trained model parameters $\Theta = \{\theta_{\text{MLP}}, \theta_{\text{VQC}}^{(1)}, \ldots, \theta_{\text{VQC}}^{(L)}\}$
+\STATE Initialize MLP parameters $\theta_{\text{MLP}}$ and VQC parameters $\{\theta_{\text{VQC}}^{(l)}\}_{l=1}^{L}$ via Xavier initialization
+\STATE Initialize AdamW optimizer with learning rate $\eta$ and weight decay $\lambda$
+\STATE Set cosine annealing LR schedule: $\eta_t = \eta_{\min} + \frac{1}{2}(\eta - \eta_{\min})\left(1 + \cos\left(\frac{t}{T_{\max}}\pi\right)\right)$
+\FOR{epoch $= 1$ to $\text{max\_epochs}$}
+    \STATE Sample mini-batch $\mathcal{B} \subset V$
+    \FOR{each node $u \in \mathcal{B}$}
+        \STATE Compute initial embedding: $h_u^{(0)} = W_0 \, x_u + b_0$
+    \ENDFOR
+    \FOR{layer $l = 1$ to $L$}
+        \FOR{each node $u \in \mathcal{B}$}
+            \STATE \textbf{VQC Layer Computation:}
+            \STATE \quad Encode $h_u^{(l-1)}$ into quantum state via angle encoding: $|\psi_u\rangle = \bigotimes_{q=1}^{n_q} R_Y(h_{u,q}^{(l-1)})|0\rangle$
+            \STATE \quad Apply parameterized circuit: $|\psi_u'\rangle = U(\theta_{\text{VQC}}^{(l)})|\psi_u\rangle$
+            \STATE \quad Measure expectation values: $z_u^{(l)} = \left[\langle Z_1 \rangle, \langle Z_2 \rangle, \ldots, \langle Z_{n_q} \rangle\right]$
+        \ENDFOR
+        \FOR{each node $u \in \mathcal{B}$}
+            \STATE \textbf{Neighbor Aggregation:}
+            \STATE \quad Aggregate neighbor quantum features: $a_u^{(l)} = \frac{1}{|\mathcal{N}(u)|} \sum_{v \in \mathcal{N}(u)} z_v^{(l)}$
+            \STATE \quad Combine self and neighbor features: $h_u^{(l)} = \text{ReLU}\!\left(W^{(l)} \left[z_u^{(l)} \| a_u^{(l)}\right] + b^{(l)}\right)$
+        \ENDFOR
+    \ENDFOR
+    \STATE \textbf{Classification:}
+    \FOR{each node $u \in \mathcal{B}$}
+        \STATE Compute logits: $\hat{y}_u = \text{MLP}_{\theta_{\text{MLP}}}(h_u^{(L)})$
+        \STATE Apply sigmoid: $p_u = \sigma(\hat{y}_u)$
+    \ENDFOR
+    \STATE \textbf{Loss Computation:}
+    \STATE $\mathcal{L} = -\frac{1}{|\mathcal{B}|} \sum_{u \in \mathcal{B}} \left[w_{\text{pos}} \cdot y_u \log p_u + (1 - y_u) \log(1 - p_u)\right]$
+    \STATE \textbf{Parameter Update:}
+    \STATE Compute gradients: $g \leftarrow \nabla_\Theta \mathcal{L}$
+    \STATE Update parameters: $\Theta \leftarrow \text{AdamW}(\Theta, g, \eta_t, \lambda)$
+    \STATE Update learning rate: $t \leftarrow t + 1$
+\ENDFOR
+\RETURN $\Theta$
+\end{algorithmic}
+\end{algorithm}
+
+The key computational steps in Algorithm~\ref{alg:qgnn} deserve further elaboration. The angle encoding on line~11 maps each component of the classical embedding $h_u^{(l-1)}$ to a rotation angle of a qubit, creating an initial quantum state that encodes the classical information. The parameterized unitary $U(\theta_{\text{VQC}}^{(l)})$ on line~12 applies a sequence of rotation and entangling gates, with the rotation angles constituting the trainable parameters of the VQC layer. The measurement on line~13 extracts classical information from the quantum state by computing the expectation value of the Pauli-$Z$ operator on each qubit, producing an $n_q$-dimensional real-valued vector that serves as the quantum-enhanced feature representation for node~$u$.
+
+The neighbor aggregation on lines~15--17 follows the standard message-passing paradigm: each node receives the quantum features of its neighbors, averages them, and combines the result with its own quantum features through a learnable linear transformation followed by a ReLU activation. The concatenation $\left[z_u^{(l)} \| a_u^{(l)}\right]$ preserves both the self-feature and the aggregated neighborhood information, allowing the model to balance local and contextual information adaptively through the learned weight matrix $W^{(l)}$. The classification head on lines~19--21 consists of a two-layer MLP with a hidden dimension of 32 and ReLU activation, producing a scalar logit that is passed through a sigmoid function to obtain the fraud probability $p_u$.
+
+The loss function on line~23 is the weighted binary cross-entropy, where the \texttt{pos\_weight} parameter $w_{\text{pos}}$ compensates for the extreme class imbalance in the BAF dataset (approximately 1.1\% fraud prevalence). Setting $w_{\text{pos}}$ to the inverse of the fraud prevalence ratio ($\approx 89$) ensures that the gradient contributions from fraudulent and legitimate examples are approximately balanced, preventing the model from achieving deceptively high accuracy by predicting all examples as legitimate. The AdamW optimizer on line~26 decouples the weight decay from the gradient update, providing more principled $\ell_2$ regularization than the standard Adam optimizer, and the cosine annealing schedule on line~3 provides a smooth learning rate decay that has been shown to improve generalization in deep learning models by enabling the optimizer to escape sharp minima during the early high-learning-rate phase and converge to flat minima during the later low-learning-rate phase.
+
+\section{Algorithm 2: SplitGNN Training Procedure}
+\label{app:splitgnn-algorithm}
+
+The Split Graph Neural Network (SplitGNN) introduces a dual-objective training framework that jointly optimizes node classification and edge classification within a single model. The key innovation is the graph splitting mechanism, which partitions the original graph into two subgraphs based on the learned edge weights: one subgraph contains edges predicted to connect nodes of the same class (homophilic edges), while the other contains edges predicted to connect nodes of different classes (heterophilic edges). Separate spectral convolution filters are then applied to each subgraph, enabling the model to learn class-aware representations that leverage the distinct homophily patterns in each subgraph. The following algorithm describes the complete training procedure.
+
+Given an input graph $G = (V, E, X)$ with node features $X$, labels $\{y_u\}$, a wavelet order parameter $C$, a split point $K$, and an edge loss weight $\gamma_e$, the SplitGNN training proceeds as follows. First, the node embeddings are initialized via a linear projection. At each training epoch, the model computes edge weights for all edges in the graph using a parametric edge classifier, splits the graph into two subgraphs based on the top-$K$ and bottom-$K$ edge weights, computes the graph Laplacians for each subgraph (using a cached Laplacian computation for efficiency), applies spectral convolution on each subgraph with residual connections, and computes a multi-task loss that combines the node classification loss, the edge classification loss, and the consistency loss. The gradient descent update is then applied to all model parameters. The early stopping criterion monitors the validation ROC AUC and terminates training if no improvement is observed for a specified patience period. The detailed procedure is presented in Algorithm~\ref{alg:splitgnn}.
+
+\begin{algorithm}[H]
+\caption{SplitGNN Training Procedure}
+\label{alg:splitgnn}
+\begin{algorithmic}[1]
+\REQUIRE Graph $G = (V, E, X)$, labels $\{y_u \mid u \in V\}$, wavelet order $C$, split point $K$, edge loss weight $\gamma_e$, node loss weight $\gamma_n$, learning rate $\eta$, early stopping patience $P$
+\ENSURE Trained model parameters $\Theta = \{\theta_{\text{emb}}, \theta_{\text{edge}}, \theta_{\text{conv}}^{\text{homo}}, \theta_{\text{conv}}^{\text{hetero}}, \theta_{\text{cls}}\}$
+\STATE Initialize embedding parameters $\theta_{\text{emb}}$, edge classifier $\theta_{\text{edge}}$, spectral convolutions $\theta_{\text{conv}}^{\text{homo}}$, $\theta_{\text{conv}}^{\text{hetero}}$, and classifier $\theta_{\text{cls}}$
+\STATE Compute initial embeddings: $h_u^{(0)} = W_{\text{emb}} \, x_u + b_{\text{emb}}$ for all $u \in V$
+\STATE Initialize AdamW optimizer with learning rate $\eta$
+\STATE $best\_auc \leftarrow 0$; $patience\_counter \leftarrow 0$
+\FOR{epoch $= 1$ to $\text{max\_epochs}$}
+    \STATE \textbf{Edge Weight Computation:}
+    \FOR{each edge $(u, v) \in E$}
+        \STATE Compute edge embedding: $e_{uv} = \left[\|h_u\| \, \| \, \|h_v\| \, \| \, (h_u - h_v)\right]$
+        \STATE Compute edge weight: $w_{uv} = \tanh\!\left(\mathbf{w}^T e_{uv} + b_e\right)$
+    \ENDFOR
+    \STATE \textbf{Graph Split:}
+    \STATE Sort edges by weight: $E_{\text{sorted}} = \text{sort}(E, \text{key}=w_{uv}, \text{descending})$
+    \STATE Homophilic subgraph: $G_{\text{homo}} = (V, E_{\text{homo}})$ where $E_{\text{homo}} = E_{\text{sorted}}[1:K]$
+    \STATE Heterophilic subgraph: $G_{\text{hetero}} = (V, E_{\text{hetero}})$ where $E_{\text{hetero}} = E_{\text{sorted}}[K+1:2K]$
+    \STATE \textbf{Laplacian Computation:}
+    \STATE $L_{\text{homo}} = \text{CachedLaplacian}(G_{\text{homo}})$
+    \STATE $L_{\text{hetero}} = \text{CachedLaplacian}(G_{\text{hetero}})$
+    \STATE \textbf{Spectral Convolution with Residual:}
+    \FOR{each node $u \in V$}
+        \STATE Homophilic convolution: $z_u^{\text{homo}} = \sum_{c=0}^{C} \theta_c^{\text{homo}} \, T_c(\tilde{L}_{\text{homo}}) \, h_u$
+        \STATE Heterophilic convolution: $z_u^{\text{hetero}} = \sum_{c=0}^{C} \theta_c^{\text{hetero}} \, T_c(\tilde{L}_{\text{hetero}}) \, h_u$
+        \STATE Combine with residual: $h_u' = \sigma\!\left(z_u^{\text{homo}} + z_u^{\text{hetero}} + h_u\right)$
+    \ENDFOR
+    \STATE \textbf{Classification:}
+    \FOR{each node $u \in V$}
+        \STATE Node logits: $\hat{y}_u = W_{\text{cls}} \, h_u' + b_{\text{cls}}$
+        \STATE Node probability: $p_u = \sigma(\hat{y}_u)$
+    \ENDFOR
+    \STATE \textbf{Multi-Task Loss:}
+    \STATE $\mathcal{L}_{\text{node}} = -\frac{1}{|V|} \sum_{u \in V} \left[w_{\text{pos}} \cdot y_u \log p_u + (1 - y_u) \log(1 - p_u)\right]$
+    \STATE $\mathcal{L}_{\text{edge}} = -\frac{1}{|E|} \sum_{(u,v) \in E} \left[\mathbb{1}[y_u = y_v] \log \sigma(w_{uv}) + \mathbb{1}[y_u \neq y_v] \log(1 - \sigma(w_{uv}))\right]$
+    \STATE $\mathcal{L}_{\text{total}} = \gamma_n \cdot \mathcal{L}_{\text{node}} + \gamma_e \cdot \mathcal{L}_{\text{edge}}$
+    \STATE \textbf{Gradient Descent Update:}
+    \STATE Compute gradients: $g \leftarrow \nabla_\Theta \mathcal{L}_{\text{total}}$
+    \STATE Update parameters: $\Theta \leftarrow \text{AdamW}(\Theta, g, \eta, \lambda)$
+    \STATE \textbf{Early Stopping:}
+    \STATE Evaluate $AUC_{\text{val}}$ on validation set
+    \IF{$AUC_{\text{val}} > best\_auc$}
+        \STATE $best\_auc \leftarrow AUC_{\text{val}}$; $patience\_counter \leftarrow 0$
+        \STATE Save model checkpoint
+    \ELSE
+        \STATE $patience\_counter \leftarrow patience\_counter + 1$
+        \IF{$patience\_counter \geq P$}
+            \STATE \textbf{break}
+        \ENDIF
+    \ENDIF
+\ENDFOR
+\RETURN Best model checkpoint
+\end{algorithmic}
+\end{algorithm}
+
+Several aspects of Algorithm~\ref{alg:splitgnn} merit detailed discussion. The edge weight computation on lines~7--9 uses a parametric function that takes the concatenation of the node embedding norms and their difference as input. The norm features $\|h_u\|$ and $\|h_v\|$ capture the magnitude of each node's representation, while the difference feature $(h_u - h_v)$ captures the directional disagreement between the two embeddings. The $\tanh$ activation constrains the edge weight to the interval $(-1, 1)$, where positive values indicate predicted homophily (same-class connection) and negative values indicate predicted heterophily (different-class connection). This design is inspired by the observation that fraudulent and legitimate applicants tend to form distinct clusters in the embedding space, with intra-cluster edges exhibiting high embedding similarity and inter-cluster edges exhibiting low similarity.
+
+The graph splitting on lines~10--13 selects the top-$K$ edges with the highest weights for the homophilic subgraph and the $K$ edges with the lowest weights for the heterophilic subgraph. The split point $K$ is a critical hyperparameter: too few edges per subgraph result in sparse graphs with insufficient connectivity for effective message passing, while too many edges per subgraph dilute the homophily/heterophily signal by including ambiguous edges. The optimal value $K = 5000$ was determined through the hyperparameter grid search reported in Appendix~\ref{app:extended-results}. The symmetric splitting (equal number of edges in both subgraphs) ensures balanced computational cost and prevents either subgraph from dominating the learned representations.
+
+The spectral convolution on lines~16--19 employs Chebyshev polynomial filters of order $C$, where $T_c(\cdot)$ denotes the $c$-th Chebyshev polynomial of the first kind and $\tilde{L}$ is the scaled Laplacian $\tilde{L} = 2L/\lambda_{\max} - I$ with $\lambda_{\max}$ being the largest eigenvalue. The Chebyshev basis provides a computationally efficient approximation to arbitrary spectral filters without requiring explicit eigendecomposition, and the polynomial order $C$ controls the filter's receptive field (i.e., how many hops of neighborhood information each filter captures). The CachedLaplacian on lines~14--15 precomputes and caches the Laplacian matrices between epochs to avoid redundant computation, with the cache being invalidated and recomputed only when the graph topology changes (which occurs at every epoch due to the dynamic edge weight updates). The residual connection on line~19 adds the original embedding $h_u$ to the combined spectral convolution outputs, mitigating the oversmoothing problem that can arise when multiple rounds of neighborhood aggregation cause all node representations to converge to similar values.
+
+The multi-task loss on lines~22--25 combines two objectives: the node classification loss $\mathcal{L}_{\text{node}}$ (weighted binary cross-entropy with \texttt{pos\_weight} to handle class imbalance) and the edge classification loss $\mathcal{L}_{\text{edge}}$ (binary cross-entropy that supervises the edge weights to correctly predict whether each edge connects same-class or different-class nodes). The edge loss provides a direct training signal for the edge classifier, which in turn improves the quality of the graph split, creating a virtuous cycle where better edge classifications lead to more informative subgraphs, which lead to better node representations, which further improve edge classifications. The weighting coefficient $\gamma_e$ controls the relative importance of the edge loss; the grid search in Appendix~\ref{app:extended-results} shows that $\gamma_e = 1.0$ (equal weighting) produces the best overall performance, suggesting that both objectives contribute equally to the model's fraud detection capability.

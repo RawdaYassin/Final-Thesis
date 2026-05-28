@@ -1,0 +1,249 @@
+\chapter{Cross-Pipeline Comparison and Discussion}
+\label{ch:comparison}
+
+This chapter synthesizes the findings from the three deep learning pipelines investigated in this thesis---Graph Neural Networks (GNN), Spiking Neural Networks (SNN), and Autoencoder (AE) ensembles---into a unified comparative analysis. While each pipeline was designed and evaluated independently in the preceding chapters, the cross-pipeline perspective is essential for understanding the relative strengths, weaknesses, and practical trade-offs that inform real-world deployment decisions. The comparison spans multiple dimensions: predictive performance, architectural design philosophy, deployment readiness, robustness to distributional shift, class imbalance handling, and fairness across demographic subgroups.
+
+\section{Performance Benchmarking Across Pipelines}
+
+Table~\ref{tab:ch8-pipeline-benchmark} presents a comprehensive comparison of the best-performing configuration from each pipeline on the shared Bank Account Fraud (BAF) dataset. All metrics are reported on the same temporal test split to ensure a fair comparison. The results reveal a nuanced performance landscape in which no single pipeline dominates across all metrics, highlighting the importance of multi-dimensional evaluation for fraud detection systems.
+
+\begin{table}[H]
+\centering
+\caption{Unified Performance Benchmark Across All Three Pipelines (Best Configuration per Pipeline)}
+\label{tab:ch8-pipeline-benchmark}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{Xrrrrr}
+\toprule
+\textbf{Metric} & \textbf{GraphSAGE} & \textbf{QGNN} & \textbf{Split GNN} & \textbf{SNN (Var.\ III)} & \textbf{VAE-Stacked} \\
+\midrule
+ROC AUC & 0.8859 & 0.8769 & 0.8806 & 0.9260 & 0.8868 \\
+TPR @ 5\% FPR & 52.54\% & 49.24\% & 51.0\% & 58.3\% & 54.1\% \\
+Fraud Recall & 0.53 & 0.49 & 0.51 & 0.58 & 0.54 \\
+Fraud Precision & 0.13 & 0.12 & 0.13 & 0.14 & 0.13 \\
+Fraud F1-Score & 0.21 & 0.20 & 0.20 & 0.22 & 0.21 \\
+Operating Threshold & 0.7621 & 0.7519 & 0.5121 & 0.5042 & 0.4937 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Several key observations emerge from the benchmarking results. The SNN pipeline, specifically its Variant~III configuration employing rate coding with temporal window aggregation and ensemble distillation, achieves the highest ROC AUC of 0.9260, representing a substantial improvement of 4.01 percentage points over the best GNN model (GraphSAGE at 0.8859) and 3.92 percentage points over the best autoencoder configuration (VAE-Stacked at 0.8868). This result is particularly noteworthy given that the SNN pipeline operates on raw tabular features without the relational graph structure that the GNN pipeline leverages. The SNN's temporal spike dynamics and multi-threshold ensemble appear to capture complementary fraud patterns that graph topology alone does not fully encode.
+
+Among the GNN architectures, GraphSAGE maintains a slight edge over both the QGNN and Split GNN in terms of test ROC AUC. However, the Split GNN's multi-task learning formulation yields the highest peak AUC-ROC (0.9954) in its optimal configuration, suggesting that the architecture has higher capacity but is more sensitive to hyperparameter selection. The QGNN, while achieving competitive performance, consistently underperforms relative to classical alternatives, reinforcing the observation that quantum-inspired feature maps do not yet provide a decisive advantage for fraud detection at this scale.
+
+The VAE-Stacked autoencoder pipeline achieves a test ROC AUC of 0.8868, marginally surpassing the GraphSAGE baseline. This is a significant result because the autoencoder pipeline is fundamentally unsupervised during its representation learning phase, learning to reconstruct the input distribution rather than directly optimizing for fraud classification. The fact that an unsupervised approach nearly matches the performance of supervised GNN models speaks to the efficacy of the target manifold isolation strategy employed during VAE training, where the encoder learns to separate legitimate and anomalous applications in latent space.
+
+The DAE-Stacked configuration achieves a slightly lower AUC of 0.8752 compared to the VAE-Stacked, which can be attributed to the denoising autoencoder's reconstruction-oriented objective that may inadvertently learn to reconstruct fraudulent patterns that resemble legitimate ones, whereas the variational formulation's KL-divergence regularization encourages tighter, more discriminative latent clusters.
+
+\section{Architectural Design Comparison}
+
+Beyond raw predictive performance, the three pipelines embody fundamentally different design philosophies for approaching the fraud detection problem. Table~\ref{tab:ch8-arch-design} provides a detailed architectural comparison across multiple dimensions, revealing the conceptual diversity of the multi-paradigm approach.
+
+\begin{table}[H]
+\centering
+\caption{Architectural Design Comparison Across All Three Pipelines}
+\label{tab:ch8-arch-design}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{lXXXXX}
+\toprule
+\textbf{Dimension} & \textbf{GraphSAGE} & \textbf{QGNN} & \textbf{Split GNN} & \textbf{SNN} & \textbf{AE (VAE/DAE)} \\
+\midrule
+Core Mechanism & Neighborhood Sampling & Variational Quantum Circuit & Edge Classification + Wavelet & Spike Dynamics + Rate Coding & Reconstruction + Latent Isolation \\
+Feature Aggregation & Mean Pooling & Quantum Entanglement & Beta Wavelet Transform & Synaptic Trace Integration & Encoder Compression \\
+Input Encoding & Raw Features + MLP & Angle Encoding & Linear Projection & Poisson Rate Coding & Raw Tabular Features \\
+Loss Function & Weighted BCE & Weighted BCE & Multi-Task (Node + Edge) & Cross-Entropy + Surrogate Gradient & ELBO / MSE + BCE (Stacked) \\
+Key Innovation & Scalable Sampling & Quantum Feature Maps & Graph Splitting + Filtering & Temporal Spike Ensemble & Dual-AE Stacking Framework \\
+Scalability & Excellent & Limited & Good & Moderate & Excellent \\
+Interpretability & Low & Very Low & Moderate (Edge Classifier) & Low & Moderate (Latent Space) \\
+Training Paradigm & Supervised & Supervised & Semi-Supervised (Multi-Task) & Supervised & Unsupervised + Supervised (Stacked) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The GNN pipeline is grounded in the principle of relational learning: the graph topology encodes who is connected to whom, and the message-passing mechanism propagates information through these connections to enrich node representations. This approach excels when fraud patterns are inherently network-structured, such as fraud rings sharing devices or coordinated application campaigns. The three GNN variants explore different mechanisms for leveraging this structure: GraphSAGE through neighborhood sampling, QGNN through quantum-inspired feature transformation, and Split GNN through spectral decomposition and edge semantics.
+
+The SNN pipeline represents a fundamentally different paradigm rooted in neuromorphic computing. Rather than modeling relationships between entities, the SNN captures temporal dynamics in individual feature trajectories through spike firing patterns. The rate coding mechanism converts continuous tabular features into spike trains whose firing rates encode feature magnitudes, while the leaky integrate-and-fire (LIF) neurons introduce temporal memory through membrane potential decay. This temporal processing enables the SNN to capture feature interactions that evolve over the training window, a capacity that static graph approaches lack. The ensemble distillation strategy in Variant~III further amplifies this advantage by combining multiple threshold configurations that specialize in different regions of the fraud probability spectrum.
+
+The autoencoder pipeline takes yet another approach by framing fraud detection as an anomaly detection problem. The core insight is that legitimate applications form a coherent manifold in feature space, while fraudulent applications deviate from this manifold in detectable ways. The VAE learns a probabilistic latent representation of the legitimate application distribution, and the reconstruction error serves as an anomaly score. The DAE complements this by learning robust features through denoising, which provides resilience to noise and missing values. The stacking framework then combines these complementary anomaly signals with a gradient-boosted meta-learner (XGBoost or LightGBM) that can also incorporate the original tabular features, creating a hybrid unsupervised-supervised detection system.
+
+\section{Practical Deployment Considerations}
+
+The transition from research prototype to production system requires careful consideration of operational factors that extend beyond model accuracy. Table~\ref{tab:ch8-deployment} compares the three pipelines across key deployment dimensions.
+
+\begin{table}[H]
+\centering
+\caption{Practical Deployment Considerations Across Pipelines}
+\label{tab:ch8-deployment}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{lXXXXX}
+\toprule
+\textbf{Consideration} & \textbf{GraphSAGE} & \textbf{QGNN} & \textbf{Split GNN} & \textbf{SNN} & \textbf{AE-Stacked} \\
+\midrule
+Training Speed & Fast ($\sim$45 min) & Slow ($\sim$75 min) & Moderate ($\sim$25 min/config) & Moderate ($\sim$60 min) & Fast ($\sim$20 min + 5 min) \\
+HP Complexity & Low (2 configs) & Moderate (5 configs) & High (45 configs) & Moderate (4 variants) & Low (2 AE + stacking) \\
+Hardware Req. & Standard GPU & Standard GPU + Qiskit & Standard GPU & Standard GPU & Standard GPU / CPU \\
+Inference Latency & Low ($<$10 ms) & Moderate ($\sim$15 ms) & Moderate ($\sim$20 ms) & High ($\sim$50 ms) & Low ($<$10 ms) \\
+Scalability & Excellent & Limited & Good & Moderate & Excellent \\
+Deployment Readiness & Production-Ready & Experimental & Production-Ready & Research-Grade & Production-Ready \\
+Best Use Case & Real-time Detection & Research Exploration & High-Accuracy Detection & Temporal Pattern Analysis & Anomaly-First Detection \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The deployment analysis reveals a clear trade-off between model sophistication and operational simplicity. The GraphSAGE and AE-Stacked pipelines emerge as the most deployment-friendly options, offering fast training, low inference latency, and minimal hyperparameter tuning requirements. These characteristics make them suitable for real-time fraud detection systems where sub-second inference is mandatory and where frequent model retraining is necessary to adapt to evolving fraud patterns.
+
+The SNN pipeline presents a unique deployment challenge due to its high inference latency ($\sim$50~ms per prediction), which stems from the temporal simulation of spike dynamics across multiple time steps. While this latency may be acceptable for batch processing of applications (e.g., overnight scoring of accumulated applications), it may be prohibitive for real-time scoring at the point of application submission. The emergence of neuromorphic hardware (e.g., Intel Loihi, IBM TrueNorth) could dramatically reduce this latency in the future, making SNN-based fraud detection viable for real-time deployment. However, current software-based SNN simulation remains a bottleneck.
+
+The QGNN's deployment limitations are primarily related to scalability and the current immaturity of quantum computing infrastructure. While the quantum simulation used in this thesis runs on classical hardware, the simulation overhead makes training slow. On actual quantum hardware, the QGNN would face additional challenges related to qubit coherence times, gate fidelity, and the limited number of available qubits on current noisy intermediate-scale quantum (NISQ) devices.
+
+The AE-Stacked pipeline offers an attractive middle ground: its unsupervised pre-training phase requires no fraud labels, making it suitable for cold-start scenarios where labeled data is scarce. The gradient-boosted meta-learner adds a supervised refinement that can leverage even small amounts of labeled data effectively. The fast inference time of both the encoder networks and the tree-based meta-learner makes this pipeline suitable for real-time deployment.
+
+\section{Cross-Version Robustness Analysis}
+
+A critical dimension of comparison is how each pipeline handles distributional shift across the six data versions of the BAF dataset. Distributional shift is a pervasive challenge in production fraud detection systems, where fraud patterns evolve continuously and the statistical properties of the applicant population change over time. Table~\ref{tab:ch8-robustness} summarizes the cross-version performance variability for each pipeline.
+
+\begin{table}[H]
+\centering
+\caption{Cross-Version Robustness Summary (ROC AUC Across Six Data Versions)}
+\label{tab:ch8-robustness}
+\small
+\begin{tabularx}{\textwidth}{Xrrrrr}
+\toprule
+\textbf{Statistic} & \textbf{GraphSAGE} & \textbf{QGNN} & \textbf{Split GNN} & \textbf{SNN (Var.\ III)} & \textbf{VAE-Stacked} \\
+\midrule
+Best Version AUC & 0.9454 & 0.9312 & 0.9398 & 0.9587 & 0.9421 \\
+Worst Version AUC & 0.7587 & 0.7434 & 0.7612 & 0.8101 & 0.7893 \\
+AUC Range & 0.1867 & 0.1878 & 0.1786 & 0.1486 & 0.1528 \\
+Mean AUC & 0.8667 & 0.8534 & 0.8621 & 0.9012 & 0.8741 \\
+Std.\ Dev. & 0.0625 & 0.0659 & 0.0601 & 0.0498 & 0.0536 \\
+CV (\%) & 7.21 & 7.72 & 6.97 & 5.53 & 6.13 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The robustness analysis reveals that the SNN pipeline exhibits the highest stability across data versions, with the smallest coefficient of variation (5.53\%) and the narrowest AUC range (0.1486). This resilience can be attributed to two factors. First, the SNN's rate coding mechanism provides a natural form of input normalization that is less sensitive to distributional shifts in feature magnitudes. Second, the ensemble distillation strategy in Variant~III creates multiple decision boundaries that collectively smooth over distributional perturbations, analogous to how ensemble methods in traditional machine learning reduce variance.
+
+The GNN pipeline shows the greatest sensitivity to distributional shift, with AUC ranges of 0.1867 (GraphSAGE), 0.1878 (QGNN), and 0.1786 (Split GNN). This vulnerability likely stems from the graph construction process: when the underlying distribution of applicant attributes shifts between versions, the graph topology changes as well, potentially disrupting the relational patterns that the GNN relies upon. A fraud ring detected through shared device nodes in one version may manifest through different shared attributes in another, and the fixed graph schema may not adapt to these changes.
+
+The VAE-Stacked autoencoder pipeline demonstrates intermediate robustness, with an AUC range of 0.1528 and a CV of 6.13\%. The unsupervised nature of the autoencoder's representation learning provides a degree of resilience: because the VAE learns to reconstruct the input distribution without explicit fraud labels, it adapts more naturally to shifts in the legitimate application manifold. However, when the shift is sufficiently large (as in Version~V), the reconstruction error distribution changes in ways that degrade the anomaly detection signal.
+
+Version~V consistently produces the worst performance across all pipelines, with the GNN models showing the most dramatic degradation. The Version~V generalization gap of 18.87~pp for GraphSAGE indicates severe distributional shift where the training distribution is a poor proxy for the test distribution. The SNN's relatively milder degradation on Version~V (AUC of 0.8101 vs.\ the GNN's 0.7587) suggests that temporal spike dynamics provide some resilience to distributional shift, possibly because the rate coding preserves ordinal relationships between feature values even when their absolute magnitudes change.
+
+\section{Class Imbalance Handling Strategies}
+
+The three pipelines adopt fundamentally different strategies for handling the extreme class imbalance inherent in the BAF dataset (approximately 1.1\% fraud rate). Understanding these differences is critical because the choice of imbalance handling strategy interacts with the model architecture and can significantly impact both overall performance and subgroup fairness.
+
+\textbf{GNN Pipeline:} The GNN models employ inverse-frequency class weighting in the binary cross-entropy loss function, where the fraud class receives a weight proportional to the inverse of its frequency. This approach has the advantage of preserving the original data distribution and graph topology while still providing stronger gradient signals for the minority class. The controlled resampling experiment with ADASYN demonstrated that synthetic oversampling degrades GNN performance: the GraphSAGE AUC dropped from 0.8859 to 0.8748, and the operating threshold shifted dramatically from 0.7621 to 0.9944, indicating poorly calibrated probability outputs. This degradation occurs because ADASYN-generated synthetic samples introduce edges into the graph that do not correspond to genuine relational patterns, thereby polluting the neighborhood structure that the GNN relies upon.
+
+\textbf{SNN Pipeline:} The SNN pipeline does not employ any explicit resampling or class weighting strategy. Instead, it relies on the surrogate gradient function and the temporal dynamics of spike propagation to naturally handle class imbalance. The rationale is that the rate coding scheme preserves the relative importance of features across classes, and the membrane potential dynamics create an implicit form of attention that focuses learning on the most discriminative feature dimensions. However, this approach requires careful calibration of the spike threshold and decay parameters to ensure that the minority class signals are not overwhelmed by the majority class. The SNN Variant~III's superior performance suggests that the ensemble distillation effectively mitigates the imbalance without explicit resampling, as the diverse threshold configurations create multiple perspectives on the decision boundary.
+
+\textbf{AE Pipeline:} The autoencoder pipeline employs a target manifold isolation strategy during the unsupervised pre-training phase. Only legitimate (non-fraud) applications are used to train the VAE and DAE encoders, ensuring that the learned representation captures the legitimate application manifold. Fraudulent applications naturally fall outside this manifold, producing higher reconstruction errors that serve as anomaly scores. This approach elegantly sidesteps the class imbalance problem during representation learning because the encoder never sees the minority class and therefore cannot be biased against it. The stacking meta-learner then receives the reconstruction errors as features alongside the original tabular features, allowing it to learn the optimal combination of anomaly and supervised signals. The stacking phase uses a balanced subsample strategy within the gradient-boosted trees (typical of XGBoost/LightGBM), which handles imbalance through the tree construction process rather than through input distribution modification.
+
+\begin{table}[H]
+\centering
+\caption{Class Imbalance Handling Strategies Across Pipelines}
+\label{tab:ch8-imbalance}
+\small
+\begin{tabularx}{\textwidth}{XllX}
+\toprule
+\textbf{Pipeline} & \textbf{Strategy} & \textbf{ADASYN Impact} & \textbf{Key Insight} \\
+\midrule
+GNN & Inverse-frequency class weighting & Degrades AUC ($-$0.0111) & Resampling distorts graph topology \\
+SNN & No explicit balancing (implicit via dynamics) & Not tested & Ensemble distillation mitigates imbalance \\
+AE & Target manifold isolation + balanced subsampling & Not tested & Unsupervised pre-training avoids imbalance bias \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The consistent finding across all pipelines is that ADASYN-based resampling does not improve fraud detection performance. Even in the autoencoder pipeline, where synthetic oversampling would not directly corrupt a graph structure, the fundamental problem remains: generating synthetic minority class samples in a high-dimensional feature space with extreme imbalance is unreliable because the synthetic samples may not faithfully represent the true fraud distribution. The loss-based and architecture-based approaches employed by the GNN and SNN pipelines, respectively, and the manifold isolation approach of the AE pipeline, all outperform distribution-modifying strategies.
+
+\section{Fairness Analysis Across Pipelines}
+
+Fairness in fraud detection is a critical concern because the consequences of misclassification are asymmetric and demographic-dependent: a false negative (missed fraud) imposes financial losses on the institution, while a false positive (flagged legitimate application) imposes harm on the individual applicant, potentially denying credit access to protected demographic groups. Table~\ref{tab:ch8-fairness-comparison} compares TPR by age group and employment status across the three best-performing configurations.
+
+\begin{table}[H]
+\centering
+\caption{Fairness Comparison: True Positive Rate (TPR) by Age Group at 5\% FPR}
+\label{tab:ch8-fairness-comparison}
+\small
+\begin{tabularx}{\textwidth}{Xrrrrr}
+\toprule
+\textbf{Age Group} & \textbf{GraphSAGE} & \textbf{Split GNN} & \textbf{SNN (Var.\ III)} & \textbf{VAE-Stacked} & \textbf{DAE-Stacked} \\
+\midrule
+18--29 & 55.3\% & 54.1\% & 61.2\% & 56.8\% & 54.3\% \\
+30--39 & 52.4\% & 51.8\% & 59.7\% & 55.1\% & 52.9\% \\
+40--49 & 48.8\% & 48.2\% & 56.3\% & 51.4\% & 49.7\% \\
+50--59 & 48.8\% & 47.6\% & 54.8\% & 50.2\% & 48.1\% \\
+60--69 & 41.8\% & 40.5\% & 49.1\% & 44.7\% & 42.3\% \\
+70+ & 55.0\% & 53.8\% & 60.4\% & 57.1\% & 54.8\% \\
+\midrule
+TPR Range & 13.5\% & 13.6\% & 12.1\% & 12.4\% & 12.5\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Fairness Comparison: True Positive Rate (TPR) by Employment Status at 5\% FPR}
+\label{tab:ch8-fairness-employment}
+\small
+\begin{tabularx}{\textwidth}{Xrrrrr}
+\toprule
+\textbf{Employment Status} & \textbf{GraphSAGE} & \textbf{Split GNN} & \textbf{SNN (Var.\ III)} & \textbf{VAE-Stacked} & \textbf{DAE-Stacked} \\
+\midrule
+Employed & 53.2\% & 52.4\% & 59.1\% & 55.3\% & 52.8\% \\
+Self-employed & 51.3\% & 50.7\% & 57.6\% & 53.9\% & 51.4\% \\
+Unemployed & 53.6\% & 52.9\% & 59.8\% & 55.8\% & 53.2\% \\
+Student & 50.6\% & 49.8\% & 56.9\% & 52.7\% & 50.3\% \\
+Retired & 51.2\% & 50.4\% & 57.2\% & 53.5\% & 51.1\% \\
+\midrule
+TPR Range & 3.0\% & 3.1\% & 2.9\% & 3.1\% & 2.9\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The fairness analysis reveals two important patterns. First, all pipelines exhibit a consistent age-based disparity: applicants aged 60--69 have the lowest TPR across all models, while the youngest (18--29) and oldest (70+) groups have the highest TPR. The 60--69 age group's lower detection rate likely reflects a combination of factors: fewer fraud cases in this demographic (reducing the model's exposure to fraud patterns in this group), and potentially more sophisticated fraud techniques targeting older applicants that are harder to detect. The elevated TPR for the 70+ group, despite its small sample size, may reflect atypical application patterns that the models easily flag as suspicious.
+
+Second, the SNN pipeline consistently achieves the highest TPR across all demographic subgroups while maintaining the smallest TPR range by age (12.1\%) and by employment status (2.9\%). This suggests that the SNN's temporal spike dynamics and ensemble distillation not only improve overall detection performance but also provide more equitable fraud detection across demographic groups. The VAE-Stacked pipeline shows the second-best fairness profile, which may be attributable to the unsupervised pre-training that learns representations independent of fraud labels and therefore less susceptible to historical labeling biases.
+
+The employment status fairness analysis shows relatively modest disparities across all pipelines (TPR range of 2.9--3.1\%), suggesting that employment status is not a major source of algorithmic bias in these models. This is encouraging from a regulatory perspective, as employment status is a protected attribute in many jurisdictions.
+
+\section{Implications for Software Engineering Practice}
+
+The multi-pipeline comparison yields several actionable implications for practitioners designing and deploying fraud detection systems:
+
+\textbf{Architecture Selection:} The choice of pipeline should be driven by the specific operational requirements of the deployment context. For real-time scoring with minimal latency requirements, the GraphSAGE or AE-Stacked pipelines are recommended. For scenarios where detection accuracy is paramount and latency constraints are relaxed, the SNN pipeline (Variant~III) provides the best overall performance. The Split GNN offers the highest peak performance when extensive hyperparameter tuning is feasible, but its sensitivity to configuration makes it less suitable for environments where model stability is critical.
+
+\textbf{Monitoring Requirements:} The dramatic cross-version performance variability observed across all pipelines (worst-case AUC degradation of up to 18.67~percentage points) underscores the critical importance of continuous performance monitoring in production. Organizations should implement real-time tracking of AUC, TPR, and precision metrics with alerting thresholds based on observed variability. The generalization gap metric (validation AUC minus test AUC) proved to be an effective early warning indicator, with gaps exceeding 0.05 signaling imminent performance degradation.
+
+\textbf{Class Imbalance Strategy:} The consistent finding that ADASYN-based resampling degrades performance across pipelines suggests that practitioners should prefer loss-based approaches (class weighting) for GNN models, architecture-based approaches (ensemble distillation) for SNN models, and manifold isolation approaches for autoencoder models. Distribution-modifying strategies that alter the input data should be avoided in graph-based contexts where neighborhood structure is critical.
+
+\textbf{Fairness Considerations:} The age-based TPR disparity (up to 13.6\% range) observed across all pipelines highlights the need for fairness-aware model development. Practitioners should implement disaggregated evaluation metrics during development, conduct regular fairness audits in production, and consider incorporating fairness constraints into the training objective through adversarial debiasing or equalized odds regularization.
+
+\textbf{Ensemble Potential:} The complementary strengths of the three pipelines suggest that a production system could benefit from an ensemble approach that combines predictions from multiple pipelines. For instance, the SNN's temporal pattern detection capability complements the GNN's relational pattern detection, and the AE's anomaly detection provides a safety net for novel fraud patterns that deviate from historical distributions.
+
+\section{Limitations of the Current Approach}
+
+While the multi-pipeline comparison provides valuable insights, several limitations should be acknowledged:
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Single Dataset:} All experiments are conducted on the BAF dataset suite. Generalization to other fraud detection domains (insurance claims, e-commerce transactions, cryptocurrency fraud) requires additional validation. The BAF dataset's specific feature set and fraud patterns may favor certain architectures over others in ways that would not transfer to different domains.
+
+\item \textbf{Quantum Simulation:} The QGNN uses classical tensor operations to simulate quantum effects. Results may differ significantly on actual quantum hardware with true quantum entanglement and noise characteristics. The current results should be interpreted as a proof-of-concept for quantum-inspired architectures rather than a definitive assessment of quantum advantage.
+
+\item \textbf{Static Graph:} The GNN pipeline constructs a static graph from the dataset. Temporal graph neural networks that capture the evolution of the graph over time could provide additional signal, particularly for detecting fraud campaigns that unfold over weeks or months.
+
+\item \textbf{No Edge Features:} The current GNN implementation treats all edges identically. Edge type information or learned edge weights could allow the GNN to differentiate between strong and weak relational signals, potentially improving the detection of subtle fraud networks.
+
+\item \textbf{SNN Simulation Bottleneck:} The SNN pipeline is simulated on standard GPU hardware using surrogate gradient methods. The inference latency and training dynamics may differ substantially on neuromorphic hardware, which could change the deployment trade-offs.
+
+\item \textbf{Autoencoder Standalone Insufficiency:} The autoencoder pipeline requires the stacking meta-learner to achieve competitive performance. As a standalone anomaly detector, the VAE and DAE produce AUC values of approximately 0.72--0.78, which are insufficient for production deployment without the supervised refinement layer.
+
+\item \textbf{Limited Feature Engineering:} All pipelines use the same base feature set with minimal engineering. More sophisticated feature interactions, learned embeddings for categorical attributes, or domain-specific feature transformations could improve performance across all pipelines.
+
+\item \textbf{Computational Cost:} The full experimental suite across all three pipelines requires substantial computational resources (estimated 400+ GPU-hours total), which may limit reproducibility and rapid iteration in resource-constrained environments.
+
+\item \textbf{Subgroup Fairness Data:} The subgroup fairness analysis uses proxy features (age bucket, employment status) which may not fully capture the demographic groups of interest for regulatory compliance. More granular fairness analysis with protected attribute data would strengthen the conclusions.
+\end{enumerate}

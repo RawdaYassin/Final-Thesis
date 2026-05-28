@@ -1,0 +1,91 @@
+\chapter{Extended Hyperparameter Configurations}
+\label{app:extended-results}
+
+This appendix provides the detailed hyperparameter configurations and extended results that complement the experimental analyses presented in the main chapters. While Chapters~\ref{ch:pipeline-gnn}--\ref{ch:pipeline-autoencoders} report the primary findings and best-performing configurations, a complete picture of the experimental landscape requires documenting the full range of configurations explored, the architectural specifications of key model components, and the mathematical foundations underlying the spiking neural network implementations. This level of detail serves two purposes: first, it enables practitioners to reproduce the exact configurations that produced the reported results; second, it provides insight into the sensitivity of each pipeline to hyperparameter choices, which is valuable for guiding future research and deployment decisions.
+
+\section{Split GNN: Top 5 Configurations}
+\label{app:split-gnn-top5}
+
+The Split GNN pipeline, described in Chapter~\ref{ch:pipeline-gnn}, employs a three-dimensional hyperparameter grid over the edge loss weight~$\gamma_e$, the number of Chebyshev polynomial coefficients~$C$, and the wavelet order~$K$. The full grid comprises 45 unique configurations (5 values of $\gamma_e \times 3$ values of $C \times 3$ values of $K$), which were exhaustively evaluated. Table~\ref{tab:app-split-top5} presents the top five configurations ranked by test ROC~AUC, along with the corresponding TPR at 5\%~FPR. The remarkably narrow performance range across these top configurations---a difference of only 0.0005 in ROC~AUC---indicates that the Split GNN is relatively robust to moderate variations in its spectral filtering parameters, provided that the edge loss weight~$\gamma_e$ is sufficiently large to encourage meaningful edge classifications. The leading configuration ($\gamma_e = 1.0$, $C = 1$, $K = 0$) corresponds to a simple first-order polynomial filter without wavelet modulation, suggesting that the Split GNN's edge classification mechanism contributes more to its fraud detection capability than the spectral filter's expressiveness. Notably, the highest TPR at 5\%~FPR (50.8\%) is achieved by the fifth-ranked configuration rather than the first, illustrating the well-known tension between ranking metrics and threshold-sensitive operational metrics in highly imbalanced settings.
+
+\begin{table}[H]
+\centering
+\caption{Split GNN: Top 5 Hyperparameter Configurations Ranked by Test ROC AUC}
+\label{tab:app-split-top5}
+\small
+\begin{tabular}{ccccc}
+\toprule
+$\gamma_e$ & $C$ & $K$ & Test ROC AUC & TPR @ 5\% FPR \\
+\midrule
+1.0 & 1 & 0  & 0.8806 & 50.6\% \\
+0.4 & 3 & $-1$ & 0.8804 & 50.1\% \\
+0.8 & 1 & 0  & 0.8804 & 50.2\% \\
+0.6 & 3 & 1  & 0.8803 & 49.6\% \\
+0.6 & 1 & 0  & 0.8801 & 50.8\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Quantum GNN (QGNN): Circuit Configuration Sweep}
+\label{app:qgnn-sweep}
+
+The Quantum GNN experiments, introduced in Section~5.5 of Chapter~\ref{ch:pipeline-gnn}, explore the impact of quantum circuit depth and qubit count on fraud detection performance. The quantum layer is integrated into the GNN as a parameterized circuit that processes node embeddings before the final classification head, using the Qiskit framework for circuit simulation. Table~\ref{tab:app-qgnn-sweep} reports the four circuit configurations evaluated, including ROC~AUC, TPR at 5\%~FPR, true positive and false negative counts, and approximate training time. The results reveal a clear hierarchy: the 16-qubit configurations consistently outperform the 6-qubit configurations, and within each qubit count, adding a second variational layer provides marginal improvements in ROC~AUC at the cost of increased training time. The 16Q-2L configuration achieves the highest ROC~AUC of 0.8769, which remains below the classical Split GNN's best performance of 0.8806, confirming that the quantum layer in its current form does not provide a detection advantage over classical spectral filtering. However, the true positive counts for the 16-qubit configurations (1,414--1,417) suggest that the quantum-enhanced representations are capturing meaningful fraud patterns. The approximately doubled training time for 2-layer versus 1-layer circuits, combined with only marginal performance gains, suggests that the practical utility of deeper quantum circuits is limited by the current simulation overhead. Future advances in quantum hardware may shift this trade-off by reducing the computational cost of deeper circuits, potentially enabling more expressive quantum feature maps that could surpass classical approaches.
+
+\begin{table}[H]
+\centering
+\caption{QGNN Circuit Configuration Sweep Results}
+\label{tab:app-qgnn-sweep}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Configuration} & \textbf{ROC AUC} & \textbf{TPR @ 5\% FPR} & \textbf{True Pos.} & \textbf{False Neg.} & \textbf{Approx. Time} \\
+\midrule
+16Q, 2L & 0.8769 & 49.24\% & 1,417 & 1,461 & $\sim$75\,min \\
+16Q, 1L & 0.8731 & 49.13\% & 1,414 & 1,464 & $\sim$70\,min \\
+6Q, 1L  & 0.8602 & 46.04\% & 1,325 & 1,553 & $\sim$37\,min \\
+6Q, 2L  & 0.8574 & 44.82\% & 1,290 & 1,588 & $\sim$38\,min \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Denoising Autoencoder Architecture Details}
+\label{app:dae-architecture}
+
+The Denoising Autoencoder (DAE) constitutes a critical component of Pipeline~III, as described in Chapter~\ref{ch:pipeline-autoencoders}. Unlike the Variational Autoencoder (VAE), which imposes a probabilistic structure on the latent space, the DAE is trained to reconstruct clean inputs from corrupted versions, thereby learning robust feature representations that capture the underlying data manifold of legitimate applications. This section provides the full architectural specification and training configuration of the DAE model used in the final stacking framework.
+
+\textbf{Tabular Swap Noise Augmentation.} The corruption strategy employed is tabular swap noise, where each feature in the input vector is independently replaced with a value randomly sampled from the same feature's empirical marginal distribution with probability~$p_{\text{corr}}$. Formally, for an input vector $\mathbf{x} = (x_1, x_2, \ldots, x_d)$, the corrupted version $\tilde{\mathbf{x}} = (\tilde{x}_1, \tilde{x}_2, \ldots, \tilde{x}_d)$ is constructed as:
+\begin{equation}
+\tilde{x}_i = \begin{cases} x_i^{\text{sample}} & \text{with probability } p_{\text{corr}} = 0.15, \\ x_i & \text{with probability } 1 - p_{\text{corr}} = 0.85, \end{cases}
+\end{equation}
+where $x_i^{\text{sample}}$ is drawn uniformly from the marginal distribution of feature~$i$ in the training set. The corruption rate of 15\% was selected based on preliminary experiments that evaluated rates in the range $[0.05, 0.30]$ in increments of 0.05; the 0.15 rate achieved the best balance between input perturbation (sufficient to force the model to learn meaningful representations) and information preservation (sufficient to maintain discriminative features for reconstruction). This rate aligns with findings in the denoising autoencoder literature, where moderate corruption rates between 10\% and 20\% typically yield the most informative latent representations for tabular data.
+
+\textbf{DAE Objective Function.} The DAE is trained using a target-isolated mean squared error (MSE) loss, where the reconstruction target is the original (uncorrupted) input $\mathbf{x}$ rather than the corrupted input $\tilde{\mathbf{x}}$. The loss function is:
+\begin{equation}
+\mathcal{L}_{\text{DAE}} = \frac{1}{N} \sum_{j=1}^{N} \left\| \mathbf{x}^{(j)} - D_{\theta_d}\!\left(E_{\theta_e}\!\left(\tilde{\mathbf{x}}^{(j)}\right)\right) \right\|^2_2,
+\end{equation}
+where $E_{\theta_e}$ and $D_{\theta_d}$ denote the encoder and decoder networks with parameters $\theta_e$ and $\theta_d$, respectively. This target-isolated formulation ensures that the model learns to denoise rather than simply copy the corrupted input to the output, forcing the latent representation to capture the essential structure of the legitimate application manifold.
+
+\textbf{Network Topology.} The DAE employs a symmetric encoder--decoder architecture with the following layer dimensions:
+\begin{itemize}
+\item \textbf{Encoder:} $53 \to 128 \to 64 \to 12$ (latent dimension)
+\item \textbf{Decoder:} $12 \to 64 \to 128 \to 53$ (reconstruction dimension)
+\end{itemize}
+All layers are fully connected (Linear) with LeakyReLU activations (negative slope $\alpha = 0.20$) applied after each hidden layer in both the encoder and decoder. The choice of LeakyReLU over standard ReLU prevents the ``dying neuron'' problem that can arise when training denoising autoencoders on sparse tabular features, where a large fraction of inputs may be zero-valued and standard ReLU would drive neuron outputs to zero permanently. Batch Normalization is applied after each LeakyReLU activation in the encoder to stabilize training and improve convergence speed. The decoder does not use Batch Normalization to allow the reconstruction layers more flexibility in producing the exact feature values required by the MSE loss. The latent dimension of 12 was selected through a grid search over $\{8, 12, 16, 24, 32\}$, with the 12-dimensional representation achieving the best downstream fraud detection performance when used as features for the stacking meta-learner.
+
+\section{Spiking Neural Network Mathematical Derivations}
+\label{app:snn-math}
+
+This section provides the complete mathematical derivations underlying the Spiking Neural Network (SNN) pipeline presented in Chapter~\ref{ch:pipeline-snn}. The SNN pipeline relies on Leaky Integrate-and-Fire (LIF) neuron dynamics for temporal spike computation and a surrogate gradient mechanism for training through backpropagation. These derivations are essential for understanding the pipeline's behavior and for ensuring exact reproducibility of the implementation.
+
+\textbf{Leaky Integrate-and-Fire (LIF) Dynamics.} The discrete-time Euler update for the LIF neuron model governs the membrane potential evolution across simulation time steps. Let $U[t]$ denote the membrane potential at time step~$t$, $I[t]$ the input current (derived from the rate-coded input features), $\beta$ the decay factor controlling the membrane potential leakage, and $S[t]$ the binary spike output. The update equations are:
+\begin{align}
+U[t] &= \beta \, U[t-1] \, (1 - S[t-1]) + I[t], \label{eq:lif-update} \\
+S[t] &= \begin{cases} 1 & \text{if } U[t] \geq U_{\text{thr}}, \\ 0 & \text{otherwise,} \end{cases} \label{eq:lif-spike}
+\end{align}
+where $U_{\text{thr}}$ is the firing threshold. The term $(1 - S[t-1])$ implements the reset mechanism: when a spike is emitted at time $t-1$, the membrane potential is reset to zero before the next integration step (hard reset). The decay factor $\beta \in (0, 1)$ controls the temporal memory of the neuron; values close to 1 produce long membrane time constants (slow decay), enabling the neuron to accumulate evidence over many time steps, while values close to 0 produce short time constants (fast decay), making the neuron responsive primarily to instantaneous input. In this thesis, $\beta$ is treated as a learnable parameter initialized to 0.9, allowing the network to adaptively determine the optimal temporal integration window for each neuron during training.
+
+\textbf{Surrogate Gradient (ArcTan).} The non-differentiable nature of the spike generation function in Eq.~\eqref{eq:lif-spike} prevents direct application of the standard backpropagation algorithm. To circumvent this, we employ a surrogate gradient approach where the derivative of the Heaviside step function is approximated by the derivative of the arc-tangent function during the backward pass. The surrogate gradient is defined as:
+\begin{equation}
+\sigma'_{\text{ATan}}(x) = \frac{\alpha / \pi}{1 + \left(\alpha \cdot x / \pi\right)^2}, \label{eq:surrogate-atan}
+\end{equation}
+where $\alpha$ is a hyperparameter controlling the steepness of the surrogate function. Larger values of $\alpha$ produce a sharper approximation that more closely matches the true Heaviside derivative, but can lead to gradient instability and training divergence. Smaller values produce a smoother gradient that promotes stable training but may slow convergence by providing less informative gradient signals near the threshold. In this thesis, $\alpha = 2.0$ is used as the default value, which was found through empirical tuning to provide the best trade-off between gradient fidelity and training stability for the BAF dataset. During the forward pass, the exact Heaviside step function is used for spike generation; the surrogate gradient is applied exclusively during the backward pass to compute the gradients required for parameter updates. This forward--backward asymmetry is a standard technique in surrogate gradient training of spiking neural networks and has been shown to enable effective learning in both feedforward and recurrent SNN architectures.

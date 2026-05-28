@@ -1,0 +1,145 @@
+\documentclass[12pt,a4paper]{report}
+
+% ==================== PACKAGES ====================
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm, headheight=15pt]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{afterpage}
+\usepackage{ragged2e}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{url}
+
+% ==================== BIBLIOGRAPHY ====================
+\usepackage[backend=biber,style=ieee,sorting=nyt,maxbibnames=99]{biblatex}
+\addbibresource{references/references.bib}
+
+% ==================== TABLE ENHANCEMENTS ====================
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{5pt}
+\definecolor{tablehead}{RGB}{52, 73, 94}
+\definecolor{tablealt}{RGB}{236, 240, 241}
+\newcommand{\theadcell}[1]{\textcolor{white}{\textbf{#1}}}
+\newcolumntype{P}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{L}{>{\RaggedRight\arraybackslash}X}
+
+% ==================== GRAPHICS PATH ====================
+\graphicspath{{images/}}
+
+% ==================== HYPERREF SETTINGS ====================
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+    pdftitle={Financial Fraud Detection Using Multi-Paradigm Deep Learning},
+    pdfauthor={Graduation Project},
+    pdfsubject={Financial Fraud Detection Using Graph Neural Networks, Spiking Neural Networks, and Autoencoders},
+}
+
+% ==================== PAGE STYLE ====================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyfoot[C]{}
+
+% ==================== CAPTION STYLING ====================
+\captionsetup[table]{font=small, labelfont=bf, skip=6pt}
+\captionsetup[figure]{font=small, labelfont=bf, skip=6pt}
+
+% ==================== ALGORITHM STYLING ====================
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+
+\begin{document}
+
+% =====================================================================
+% FRONT MATTER
+% =====================================================================
+\input{chapters/ch00_frontmatter}
+
+% =====================================================================
+% MAIN MATTER — TECHNICAL CHAPTERS
+% =====================================================================
+
+% Chapter 1: Introduction
+\input{chapters/ch01_introduction}
+
+% Chapter 2: Literature Review
+\input{chapters/ch02_literature_review}
+
+% Chapter 3: Analysis and Requirements Engineering
+\input{chapters/ch03_requirements}
+
+% Chapter 4: System Architecture and Design
+\input{chapters/ch04_architecture}
+
+% Chapter 5: Pipeline I — Graph Neural Networks
+\input{chapters/ch05_pipeline_gnn}
+
+% Chapter 6: Pipeline II — Spiking Neural Networks
+\input{chapters/ch06_pipeline_snn}
+
+% Chapter 7: Pipeline III — Unsupervised Autoencoders
+\input{chapters/ch07_pipeline_autoencoders}
+
+% Chapter 8: Cross-Pipeline Comparison and Discussion
+\input{chapters/ch08_comparison}
+
+% Chapter 9: Conclusion and Future Work
+\input{chapters/ch09_conclusion}
+
+% =====================================================================
+% APPENDICES
+% =====================================================================
+\appendix
+
+% Appendix A: AI Ethics & Bias Statement
+\input{chapters/appA_ethics}
+
+% Appendix B: Reproducibility Report
+\input{chapters/appB_reproducibility}
+
+% Appendix C: Generative AI Disclosure
+\input{chapters/appC_genai}
+
+% Appendix D: Extended Hyperparameter Configurations
+\input{chapters/appD_extended_results}
+
+% Appendix E: Denoising Autoencoder Architecture and Objective Formulations
+\input{chapters/appE_dae_architecture}
+
+% Appendix F: Spiking Neural Network Mathematical Derivations
+\input{chapters/appF_snn_math}
+
+% Appendix G: Graph Neural Network Algorithmic Procedures
+\input{chapters/appG_gnn_algorithms}
+
+% =====================================================================
+% BIBLIOGRAPHY
+% =====================================================================
+\printbibliography[heading=bibintoc,title={References}]
+
+\end{document}

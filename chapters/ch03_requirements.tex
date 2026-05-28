@@ -1,0 +1,109 @@
+% =====================================================================
+% CHAPTER 3: ANALYSIS AND REQUIREMENTS ENGINEERING
+% =====================================================================
+\chapter{Analysis and Requirements Engineering}
+\label{ch:requirements}
+
+\section{Stakeholder Analysis}
+
+The primary stakeholders in a multi-pipeline financial fraud detection system---spanning GNN, SNN, and Autoencoder paradigms---include:
+
+\begin{table}[H]
+\centering
+\caption{Stakeholder Analysis}
+\label{tab:stakeholders}
+\small
+\begin{tabularx}{\textwidth}{lLX}
+\toprule
+\textbf{Stakeholder} & \textbf{Interest} & \textbf{Influence} \\
+\midrule
+Financial Institutions & Minimize fraud losses while maintaining customer satisfaction; regulatory compliance & High --- primary adopter and funder \\
+Fraud Analysts & Effective tools for investigating flagged transactions; interpretable model outputs & Medium --- daily users of the system \\
+Regulatory Bodies & Fair and non-discriminatory detection; explainability of decisions & High --- legal compliance requirements \\
+Customers & Legitimate transactions processed without undue friction; privacy protection & Low --- indirect influence through complaints \\
+Data Science Team & Model accuracy, scalability, maintainability of the detection pipeline & Medium --- system designers \\
+Neuromorphic Engineers & Efficient SNN deployment on neuromorphic hardware; spike encoding fidelity & Medium --- SNN pipeline designers and deployers \\
+Anomaly Detection Specialists & Unsupervised detection quality; reconstruction error calibration; low false positive rates on autoencoder outputs & Medium --- AE pipeline designers and evaluers \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The stakeholder landscape has been expanded beyond the original GNN-focused analysis to account for the additional expertise required by the SNN and Autoencoder pipelines. Neuromorphic engineers are critical stakeholders for the SNN pipeline, as the translation of trained models to neuromorphic hardware (e.g., Intel Loihi, IBM TrueNorth) requires careful attention to spike encoding schemes, neuron parameter constraints, and latency budgets. Anomaly detection specialists bring domain knowledge in unsupervised learning calibration, reconstruction error analysis, and the design of ensemble strategies that combine complementary detection paradigms.
+
+\section{Functional Requirements}
+
+\begin{table}[H]
+\centering
+\caption{Functional Requirements}
+\label{tab:functional-reqs}
+\small
+\begin{tabularx}{\textwidth}{clL}
+\toprule
+\textbf{ID} & \textbf{Requirement} & \textbf{Description} \\
+\midrule
+FR-01 & Graph Construction & The system shall transform tabular applicant data into a heterogeneous graph with at least 17 node types and bidirectional edges \\
+FR-02 & Node Classification & The system shall classify user nodes as legitimate or fraudulent with ROC AUC $\geq$ 0.85 \\
+FR-03 & Multi-Model Support & The system shall support at least three GNN architectures: GraphSAGE, QGNN, and Split GNN \\
+FR-04 & Temporal Validation & The system shall evaluate models using temporal train/validation/test splits to simulate production conditions \\
+FR-05 & Threshold Calibration & The system shall calibrate operating thresholds at a target false positive rate of 5\% \\
+FR-06 & Hyperparameter Tuning & The system shall support grid search over wavelet order, split point, and edge loss weight for the Split GNN \\
+FR-07 & Cross-Version Evaluation & The system shall evaluate model robustness across multiple data distribution variants \\
+FR-08 & Fairness Analysis & The system shall report subgroup performance metrics by age group and employment status \\
+FR-09 & SNN Spike Encoding & The system shall support configurable spike encoding strategies (rate coding, latency coding, delta modulation) to transform tabular applicant features into temporal spike trains compatible with LIF neuron dynamics \\
+FR-10 & VAE/DAE Anomaly Scoring & The system shall implement both Variational Autoencoder (VAE) and Denoising Autoencoder (DAE) models, each producing per-sample anomaly scores from reconstruction errors and/or negative log-likelihood, with configurable corruption schedules for the DAE \\
+FR-11 & Ensemble Voting & The system shall support ensemble decision fusion across the GNN, SNN, and Autoencoder pipelines via majority voting, weighted averaging, and score-level stacking with gradient-boosted meta-learners (XGBoost/LightGBM) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The functional requirements FR-09 through FR-11 extend the system's capabilities to encompass the SNN and Autoencoder pipelines. FR-09 ensures that tabular fraud features can be faithfully represented as temporal spike patterns, a prerequisite for leveraging the temporal dynamics of spiking neurons. FR-10 mandates dual autoencoder paradigms (VAE for distribution-aware anomaly scoring, DAE for corruption-invariant feature learning) with complementary anomaly signals. FR-11 provides the integration layer that unifies predictions from all three pipelines, enabling the system to exploit the complementary strengths of graph-based relational reasoning, temporal spike-based pattern detection, and unsupervised anomaly detection.
+
+\section{Non-Functional Requirements}
+
+\begin{table}[H]
+\centering
+\caption{Non-Functional Requirements}
+\label{tab:nonfunctional-reqs}
+\small
+\begin{tabularx}{\textwidth}{clL}
+\toprule
+\textbf{ID} & \textbf{Requirement} & \textbf{Description} \\
+\midrule
+NFR-01 & Scalability & The system shall process graphs with at least 1 million nodes and 14 million edges \\
+NFR-02 & Memory Efficiency & The system shall use cached Laplacian representations to avoid $O(N^2)$ memory for graph spectral operations \\
+NFR-03 & Training Stability & The system shall incorporate early stopping, gradient clipping, and learning rate scheduling to ensure stable convergence \\
+NFR-04 & Reproducibility & All experiments shall be reproducible with fixed random seeds and documented hyperparameters \\
+NFR-05 & Modularity & The graph construction, model training, and evaluation components shall be independently usable \\
+NFR-06 & Interpretability & The Split GNN edge classifier shall provide interpretable edge importance scores \\
+NFR-07 & Temporal Simulation Support & The SNN pipeline shall support configurable temporal simulation parameters (simulation timesteps $\geq$ 20, membrane time constant $\tau$, decay factor) and surrogate gradient functions (fast sigmoid, piecewise linear, arc tangent) to enable stable training through backpropagation through time \\
+NFR-08 & Unsupervised Training Capability & The Autoencoder pipeline shall support fully unsupervised training on legitimate-only data subsets, with the ability to isolate the target manifold by excluding fraudulent samples during encoder/decoder optimization, and shall provide calibrated anomaly score thresholds without requiring labeled fraud examples \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+NFR-07 addresses the unique computational requirements of spiking neural networks, where temporal simulation introduces a sequential dependency across timesteps that must be carefully managed for both training efficiency and numerical stability. The surrogate gradient requirement ensures that the non-differentiable spike function does not prevent gradient-based optimization. NFR-08 ensures that the autoencoder pipeline can operate in a purely unsupervised regime---a critical capability for fraud detection systems where labeled fraud examples are scarce and costly to obtain. The target manifold isolation requirement ensures that the autoencoder learns exclusively from legitimate behavior patterns, so that deviations (fraud) produce maximally discriminative reconstruction errors.
+
+\section{Data Requirements}
+
+\begin{table}[H]
+\centering
+\caption{Data Requirements}
+\label{tab:data-reqs}
+\small
+\begin{tabularx}{\textwidth}{clL}
+\toprule
+\textbf{ID} & \textbf{Requirement} & \textbf{Description} \\
+\midrule
+DR-01 & Dataset Size & Minimum 1 million applicant records with temporal split capability \\
+DR-02 & Feature Richness & At least 23 features per applicant including categorical, continuous, and binary types \\
+DR-03 & Class Imbalance & The dataset shall reflect real-world fraud prevalence ($\sim$1\% fraud rate) \\
+DR-04 & Temporal Structure & Records shall include timestamps enabling month-based temporal splitting \\
+DR-05 & Multi-Version Support & At least 6 data distribution variants for cross-version robustness evaluation \\
+DR-06 & Privacy Compliance & All personally identifiable information shall be anonymized or excluded from model features \\
+DR-07 & Spike Encoding Compatibility & The feature set shall support transformation into spike train representations: continuous features shall be normalizable to $[0,1]$ for rate coding; all feature dimensions shall be compatible with the selected encoding scheme's input dimension constraints \\
+DR-08 & Target Manifold Isolation & The dataset shall support stratified extraction of legitimate-only subsets for autoencoder training, with sufficient legitimate sample volume ($\geq$ 500K records) to ensure comprehensive coverage of the normal behavior manifold \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+DR-07 ensures that the feature engineering pipeline can produce spike-compatible representations for the SNN pipeline. Continuous features must be normalizable to bounded ranges suitable for rate coding (where spike probability is proportional to feature magnitude) or latency coding (where earlier spikes encode larger values). DR-08 addresses the data requirements specific to unsupervised autoencoder training: the autoencoder must learn its reconstruction target exclusively from legitimate transactions, requiring a clean separation of the training data by class label at the data preparation stage. The minimum volume of 500K legitimate records ensures that the learned manifold is sufficiently dense to produce low reconstruction errors for normal behavior and high errors for anomalous (fraudulent) patterns.

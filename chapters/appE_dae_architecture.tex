@@ -1,0 +1,65 @@
+\chapter{Denoising Autoencoder Architecture and Objective Formulations}
+\label{app:dae-arch}
+
+This appendix provides a rigorous treatment of the Denoising Autoencoder (DAE) architecture employed within Pipeline~III of the multi-paradigm fraud detection system. While Chapter~\ref{ch:pipeline-autoencoders} presents the high-level design rationale and empirical results, this appendix formalizes the mathematical foundations of the corruption strategy, the objective function, and the network topology. A precise understanding of these components is essential for reproducibility and for extending the DAE framework to new domains or datasets. The formulations presented here are implemented exactly in the accompanying codebase and correspond to the configuration that produced the best-performing stacking meta-learner reported in the experimental chapters.
+
+\section{Tabular Swap Noise Augmentation}
+\label{app:dae-swap-noise}
+
+The corruption strategy applied to the input before encoding is tabular swap noise, a technique specifically designed for heterogeneous tabular data where features may differ in scale, type, and distribution. Unlike Gaussian noise or masking corruption, which are commonly applied to image data, swap noise replaces a feature value with another value drawn from the same feature's empirical marginal distribution in the training set. This preserves the marginal statistics of each feature while breaking the joint dependencies between features, thereby forcing the autoencoder to learn the underlying multivariate structure of the data rather than relying on local feature correlations.
+
+Formally, consider an input feature vector $\mathbf{x} = (x_1, x_2, \ldots, x_d) \in \mathbb{R}^d$, where $d = 53$ denotes the number of input features in the BAF dataset. For each feature dimension~$j \in \{1, 2, \ldots, d\}$, an independent Bernoulli random variable $m_j \sim \text{Bernoulli}(p_{\text{corr}})$ is sampled to determine whether that feature is corrupted. The corruption mask $\mathbf{m} = (m_1, m_2, \ldots, m_d)$ is drawn independently for each training example at each training step, ensuring stochastic diversity in the corruption process. The corrupted input $\tilde{\mathbf{x}} = (\tilde{x}_1, \tilde{x}_2, \ldots, \tilde{x}_d)$ is then constructed according to the swap noise mapping:
+\begin{equation}
+\tilde{x}_j = \begin{cases} x_j^{\text{sample}} & \text{with probability } p_{\text{corr}} = 0.15, \\ x_j & \text{with probability } 1 - p_{\text{corr}} = 0.85, \end{cases}
+\label{eq:swap-noise}
+\end{equation}
+where $x_j^{\text{sample}}$ is a value drawn uniformly at random from the empirical marginal distribution of feature~$j$ across all training examples. Specifically, if the training set contains $N$ examples with feature values $\{x_j^{(1)}, x_j^{(2)}, \ldots, x_j^{(N)}\}$ for dimension~$j$, then $x_j^{\text{sample}}$ is obtained by uniformly sampling one index $k \sim \text{Uniform}\{1, \ldots, N\}$ and setting $x_j^{\text{sample}} = x_j^{(k)}$.
+
+The corruption probability $p_{\text{corr}} = 0.15$ was selected through a systematic grid search over the range $[0.05, 0.30]$ in increments of 0.05. At very low corruption rates ($p_{\text{corr}} < 0.10$), the autoencoder receives insufficient perturbation to learn meaningful denoising representations, and the model degenerates toward a near-identity mapping that fails to capture the structure of the legitimate application manifold. At very high corruption rates ($p_{\text{corr}} > 0.20$), the input retains too little information about the original features, making the reconstruction task excessively difficult and degrading both the quality of the latent representation and the convergence speed of training. The selected rate of 15\% provides an effective compromise: it corrupts enough features to force the model to learn robust representations that generalize across perturbations, while preserving the majority of the original information so that the reconstruction target remains achievable.
+
+An important property of swap noise, compared to alternative corruption strategies such as zero-masking or Gaussian additive noise, is that the corrupted value $\tilde{x}_j$ remains a plausible value for feature~$j$ because it is drawn from the same empirical distribution. This plausibility is particularly important for categorical or discrete features (e.g., the number of fraud reports, employment status codes), where zero-masking would produce out-of-distribution values that could bias the encoder's learned representations. By sampling from the marginal, swap noise ensures that the encoder processes inputs that are always within the support of the data distribution, even if the joint configuration of features is corrupted.
+
+\section{DAE Objective Function}
+\label{app:dae-objective}
+
+The Denoising Autoencoder is trained using a target-isolated mean squared error (MSE) loss function. The term ``target-isolated'' refers to the critical design choice that the reconstruction target is the original, uncorrupted input $\mathbf{x}$ rather than the corrupted input $\tilde{\mathbf{x}}$ that is fed to the encoder. This asymmetry between the encoder input and the reconstruction target is the fundamental mechanism that drives the DAE to learn a denoising mapping rather than a trivial identity function. If the target were the corrupted input itself, the optimal strategy for the autoencoder would be to learn an identity mapping, which would require no meaningful latent representation.
+
+The loss function is formulated as:
+\begin{equation}
+\mathcal{L}_{\text{DAE}} = \frac{1}{N} \sum_{i=1}^{N} \left\| \mathbf{x}^{(i)} - D_{\theta_d}\!\left(E_{\theta_e}\!\left(\tilde{\mathbf{x}}^{(i)}\right)\right) \right\|^2_2,
+\label{eq:dae-loss}
+\end{equation}
+where $N$ is the number of training examples in a mini-batch, $E_{\theta_e}: \mathbb{R}^d \to \mathbb{R}^z$ denotes the encoder parameterized by $\theta_e$ that maps the corrupted input $\tilde{\mathbf{x}}^{(i)}$ to a latent representation $\mathbf{z}^{(i)} = E_{\theta_e}(\tilde{\mathbf{x}}^{(i)}) \in \mathbb{R}^z$, and $D_{\theta_d}: \mathbb{R}^z \to \mathbb{R}^d$ denotes the decoder parameterized by $\theta_d$ that reconstructs the original input from the latent code. The squared $\ell_2$-norm $\|\cdot\|^2_2$ computes the element-wise squared difference, summing over all $d = 53$ feature dimensions.
+
+The target-isolated formulation has an important theoretical interpretation: it encourages the encoder to learn a mapping from the corrupted input to a latent representation from which the original input can be recovered. This effectively requires the latent space to capture the essential structure of the data manifold while being invariant to the specific corruption pattern applied. In the context of fraud detection, this manifold-learning property is particularly valuable because the DAE is trained exclusively on legitimate (non-fraudulent) applications. The latent representation therefore encodes the structure of the legitimate application manifold, and fraudulent applications---which deviate from this manifold---produce high reconstruction errors that serve as anomaly signals for the downstream stacking meta-learner.
+
+The optimization of $\mathcal{L}_{\text{DAE}}$ is performed using the Adam optimizer with an initial learning rate of $1 \times 10^{-3}$, which is reduced by a factor of 0.5 when the validation loss plateaus for 10 consecutive epochs (ReduceLROnPlateau scheduler). Training is terminated early if the validation loss does not improve for 20 consecutive epochs, with the model checkpoint corresponding to the best validation loss being retained for inference. A weight decay of $1 \times 10^{-5}$ is applied as $\ell_2$ regularization on all trainable parameters to prevent overfitting, particularly important given the relatively small size of the legitimate-only training subset.
+
+\section{Network Topology}
+\label{app:dae-topology}
+
+The DAE employs a symmetric encoder--decoder architecture with progressively narrowing and widening layer dimensions, respectively. The full topology is specified below:
+
+\begin{itemize}
+\item \textbf{Encoder:} $53 \to 128 \to 64 \to 12$ (latent bottleneck $\mathbf{z}$)
+\item \textbf{Latent Bottleneck:} 12 coordinates
+\item \textbf{Decoder:} $12 \to 64 \to 128 \to 53$ (Linear Activation)
+\end{itemize}
+
+The encoder maps the 53-dimensional input through two expanding hidden layers (128 and 64 units) before compressing to the 12-dimensional latent bottleneck. The decoder mirrors this path, expanding from 12 through 64 and 128 units before reconstructing the original 53 features. The final decoder layer uses a linear activation function (i.e., no non-linearity) to allow the output to span the full range of feature values, including both positive and negative values, without the saturating behavior that would be imposed by sigmoid or tanh activations.
+
+All hidden layers in both the encoder and decoder use LeakyReLU activation with a negative slope of $\alpha = 0.20$. The LeakyReLU activation function is defined as:
+\begin{equation}
+\text{LeakyReLU}(x; \alpha) = \begin{cases} x & \text{if } x \geq 0, \\ \alpha \cdot x & \text{if } x < 0. \end{cases}
+\label{eq:leaky-relu}
+\end{equation}
+The choice of LeakyReLU over the standard ReLU ($\alpha = 0$) is motivated by the ``dying neuron'' problem that is particularly acute in denoising autoencoders trained on tabular data. In such data, a substantial fraction of input features may be zero-valued or near-zero (e.g., the number of prior fraud reports is zero for the vast majority of applications), which can cause standard ReLU neurons to receive only negative pre-activations during both the forward pass and the gradient computation. Over time, these neurons permanently output zero and cease to contribute to the model's representation, reducing effective capacity. The non-zero negative slope $\alpha = 0.20$ ensures that even neurons receiving predominantly negative inputs maintain a small but non-zero gradient, allowing them to recover during training.
+
+Batch Normalization is applied after each LeakyReLU activation in the encoder layers. Each Batch Normalization layer computes the mean $\mu_B$ and variance $\sigma_B^2$ over the current mini-batch and normalizes the activations:
+\begin{equation}
+\hat{h}_j = \frac{h_j - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}},
+\label{eq:batchnorm}
+\end{equation}
+where $\epsilon = 1 \times 10^{-5}$ is a small constant for numerical stability, and the normalized activations are then scaled and shifted by learnable parameters $\gamma_j$ and $\beta_j$. Batch Normalization in the encoder serves two purposes: it stabilizes training by reducing internal covariate shift, and it acts as a mild regularizer due to the stochasticity introduced by mini-batch statistics. The decoder does not employ Batch Normalization, allowing the reconstruction layers greater flexibility in producing the exact feature values required by the MSE loss; preliminary experiments showed that adding Batch Normalization to the decoder slightly increased reconstruction error, likely because the normalization constraint interfered with the precise value recovery needed for accurate reconstruction.
+
+The latent dimension of 12 was selected through a grid search over $\{8, 12, 16, 24, 32\}$, evaluating each configuration by the downstream fraud detection performance (ROC AUC) of the stacking meta-learner that consumes the DAE's latent representations as features. The 12-dimensional representation achieved the highest ROC AUC of 0.8643, outperforming both the 8-dimensional bottleneck (0.8619, insufficient capacity) and the 32-dimensional bottleneck (0.8624, over-parameterization leading to reduced denoising pressure). This result confirms the classical autoencoder finding that an intermediate bottleneck width produces the most informative representations by striking a balance between compression (which forces the model to discard noise and retain signal) and capacity (which provides sufficient degrees of freedom to encode the relevant structure).

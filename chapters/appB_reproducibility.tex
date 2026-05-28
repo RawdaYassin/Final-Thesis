@@ -1,0 +1,103 @@
+\chapter{Reproducibility Report}
+\label{app:reproducibility}
+
+This appendix provides the information necessary to reproduce the experiments presented in this thesis across all three deep learning pipelines: Graph Neural Network (GNN), Spiking Neural Network (SNN), and Autoencoder (AE) ensemble. Reproducibility is a cornerstone of scientific research, and we have made every effort to document the computational environment, random seeds, training times, and software dependencies required to replicate our results.
+
+\section{Hardware and Software Environment}
+
+All experiments were conducted on a shared high-performance computing cluster with the specifications detailed in Table~\ref{tab:repro-env}. The GNN experiments required GPU acceleration for the message-passing operations and spectral graph filtering. The SNN experiments also leveraged GPU acceleration for the parallel simulation of spike dynamics across neurons and time steps. The AE experiments are the most hardware-flexible: the encoder--decoder networks benefit from GPU acceleration, but the gradient-boosted stacking meta-learner (XGBoost/LightGBM) can train efficiently on CPU-only systems.
+
+\begin{table}[H]
+\centering
+\caption{Computational Environment}
+\label{tab:repro-env}
+\small
+\begin{tabularx}{0.9\textwidth}{lL}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+GPU & NVIDIA A100 80GB / NVIDIA V100 32GB \\
+CPU & AMD EPYC 7742 / Intel Xeon Gold 6248 \\
+RAM & 256 GB DDR4 \\
+OS & Ubuntu 22.04 LTS \\
+Python & 3.10.12 \\
+PyTorch & 2.1.0 \\
+PyTorch Geometric & 2.4.0 \\
+CUDA & 12.1 \\
+Norse (SNN Library) & 0.3.7 \\
+snnTorch~\cite{eshraghian2021snntorch} & 0.7.0 \\
+XGBoost & 2.0.3 \\
+LightGBM & 4.1.0 \\
+Qiskit & 0.45.0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Random Seeds}
+
+All experiments use fixed random seeds to ensure reproducibility across the three pipelines:
+\begin{itemize}
+\item NumPy random seed: 42
+\item PyTorch random seed: 42
+\item Python random seed: 42
+\item CUDA deterministic mode: enabled
+\item XGBoost random seed: 42
+\item LightGBM random seed: 42
+\end{itemize}
+
+\noindent Note that full determinism on GPU requires setting \texttt{torch.backends.cudnn.deterministic = True} and \texttt{torch.backends.cudnn.benchmark = False}, which may slightly reduce training speed. All reported results were obtained with these settings enabled.
+
+\section{Training Time and Resource Estimates}
+
+Table~\ref{tab:repro-time} provides approximate training times for all experiment types across the three pipelines. Times are reported for a single run on the NVIDIA A100 GPU. The total computational budget for the full experimental suite across all pipelines is estimated at approximately 400+ GPU-hours.
+
+\begin{table}[H]
+\centering
+\caption{Approximate Training Time per Experiment (NVIDIA A100)}
+\label{tab:repro-time}
+\small
+\begin{tabularx}{0.9\textwidth}{lX}
+\toprule
+\textbf{Experiment Type} & \textbf{Approximate Time} \\
+\midrule
+\multicolumn{2}{l}{\textit{GNN Pipeline}} \\
+GraphSAGE (hidden\_dim=128, 200 epochs) & $\sim$45 min \\
+GraphSAGE (hidden\_dim=64, 200 epochs) & $\sim$30 min \\
+QGNN (16 qubits, 4 layers, 200 epochs) & $\sim$75 min \\
+QGNN (6 qubits, 1 layer, 200 epochs) & $\sim$37 min \\
+Split GNN (single config, 200 epochs) & $\sim$25 min \\
+Full 45-experiment Split GNN grid & $\sim$19 hours \\
+Cross-version evaluation (6 versions $\times$ GraphSAGE) & $\sim$4.5 hours \\
+Resampling experiment (GraphSAGE + ADASYN) & $\sim$50 min \\
+\midrule
+\multicolumn{2}{l}{\textit{SNN Pipeline}} \\
+SNN Base (single model, 200 epochs) & $\sim$35 min \\
+SNN Variant I (2-threshold ensemble) & $\sim$70 min \\
+SNN Variant II (3-threshold ensemble) & $\sim$105 min \\
+SNN Variant III (5-threshold ensemble + distillation) & $\sim$175 min \\
+SNN Cross-version evaluation (6 versions) & $\sim$6 hours \\
+SNN Hyperparameter sensitivity (learning rate, decay) & $\sim$8 hours \\
+\midrule
+\multicolumn{2}{l}{\textit{AE Pipeline}} \\
+VAE training (legitimate class only, 300 epochs) & $\sim$15 min \\
+DAE training (legitimate class only, 300 epochs) & $\sim$12 min \\
+Feature extraction (VAE + DAE encoders) & $\sim$5 min \\
+Stacking meta-learner (XGBoost/LightGBM) & $\sim$3 min \\
+Full VAE-Stacked pipeline (end-to-end) & $\sim$23 min \\
+Full DAE-Stacked pipeline (end-to-end) & $\sim$20 min \\
+AE Cross-version evaluation (6 versions $\times$ 2 configs) & $\sim$5 hours \\
+\midrule
+\multicolumn{2}{l}{\textit{Shared Overhead}} \\
+Graph construction (FraudGraphBuilder) & $\sim$8 min \\
+Data preprocessing and temporal splitting & $\sim$2 min \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Dataset Access}
+
+The Bank Account Fraud (BAF) dataset suite~\cite{jesus2022bank, feedzai2022baf} used in this thesis is publicly available through NeurIPS 2022 Datasets and Benchmarks. The dataset can be accessed via the Feedzai Research repository. All six data distribution variants used in the cross-version evaluation are included in the dataset suite. Researchers should note that the dataset contains synthetic data generated to preserve the statistical properties of real financial data while protecting individual privacy, and that no personally identifiable information is included.
+
+\section{Code Availability}
+
+The source code for all three pipelines, including the FraudGraphBuilder framework, GNN models (GraphSAGE, QGNN, Split GNN), SNN pipeline (with rate coding and ensemble distillation, implemented using both Norse~and snnTorch~\cite{eshraghian2021snntorch}), and AE stacking framework (VAE + DAE + XGBoost/LightGBM), is organized in a modular repository structure. Each pipeline can be executed independently, and the evaluation framework supports consistent metric computation across pipelines. Configuration files with all hyperparameters are provided for each experiment to ensure exact reproducibility.

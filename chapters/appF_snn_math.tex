@@ -1,0 +1,97 @@
+\chapter{Spiking Neural Network Mathematical Derivations}
+\label{app:snn-math}
+
+This appendix presents the complete mathematical derivations underlying the Spiking Neural Network (SNN) pipeline described in Chapter~\ref{ch:pipeline-snn}. The SNN paradigm departs fundamentally from conventional artificial neural networks by operating on discrete spike events rather than continuous activation values, introducing both unique representational capabilities and distinctive training challenges. Two core mathematical components require formal treatment: the Leaky Integrate-and-Fire (LIF) neuron model that governs spike dynamics, and the surrogate gradient mechanism that enables gradient-based optimization through the non-differentiable spike generation function. These derivations are essential for understanding the theoretical properties of the SNN pipeline and for ensuring exact reproducibility of the implementation. The notation and parameter choices presented here correspond precisely to the codebase that produced the experimental results reported in the main chapters.
+
+\section{Leaky Integrate-and-Fire (LIF) Dynamics}
+\label{app:lif-dynamics}
+
+The Leaky Integrate-and-Fire model is the most widely used spiking neuron model in the surrogate gradient learning literature, offering a tractable balance between biological realism and computational efficiency. The model describes a point neuron whose membrane potential integrates incoming synaptic currents while decaying toward a resting potential, emitting a discrete spike when the membrane potential crosses a threshold. This section presents both the continuous-time formulation (for theoretical reference) and the discrete-time formulation (which is used in the actual implementation).
+
+\subsection{Continuous-Time Formulation}
+
+In continuous time, the membrane potential $V(t)$ of a LIF neuron evolves according to the first-order ordinary differential equation:
+\begin{equation}
+\tau_m \frac{dV}{dt} = -\left(V(t) - V_{\text{rest}}\right) + R \cdot I(t),
+\label{eq:lif-continuous}
+\end{equation}
+where $\tau_m$ is the membrane time constant (controlling the rate of exponential decay toward the resting potential), $V_{\text{rest}}$ is the resting membrane potential, $R$ is the membrane resistance, and $I(t)$ is the total input current at time~$t$. When the membrane potential reaches the firing threshold $V_{\text{thr}}$, a spike is emitted and the membrane potential is instantaneously reset to the reset potential $V_{\text{reset}}$. The continuous-time formulation provides the theoretical foundation for the model but is not directly amenable to numerical simulation on digital hardware, necessitating a discrete-time approximation.
+
+\subsection{Discrete-Time Euler Approximation}
+
+The discrete-time formulation used in the implementation employs a first-order Euler approximation of Eq.~\eqref{eq:lif-continuous}, with a hard reset mechanism that sets the membrane potential to zero immediately after a spike. Let $U[t]$ denote the membrane potential at discrete time step~$t$, $I[t]$ the input current, $\beta$ the decay factor, and $S[t]$ the binary spike output. The discrete-time update equations are:
+\begin{align}
+U[t] &= \beta \, U[t-1] \, (1 - S[t-1]) + I[t], \label{eq:lif-discrete-update} \\
+S[t] &= \begin{cases} 1 & \text{if } U[t] \geq V_{\text{thr}}, \\ 0 & \text{otherwise,} \end{cases} \label{eq:lif-discrete-spike}
+\end{align}
+where $\beta \in (0, 1)$ is the decay factor that controls the temporal memory of the neuron. The relationship between $\beta$ and the continuous-time membrane time constant is $\beta = \exp(-\Delta t / \tau_m)$, where $\Delta t$ is the discrete time step size. In the SNN pipeline, the simulation is conducted over $T = 25$ time steps, with the input features rate-coded into spike trains that span the full simulation duration.
+
+The term $(1 - S[t-1])$ in Eq.~\eqref{eq:lif-discrete-update} implements the hard reset mechanism: when a spike is emitted at time step~$t-1$ (i.e., $S[t-1] = 1$), the membrane potential is reset to zero before the next integration step, ensuring that the post-spike potential does not carry residual charge from the pre-spike state. This hard reset is preferred over the alternative soft reset ($U[t] = \beta \, U[t-1] + I[t] - V_{\text{thr}} \cdot S[t-1]$) because it produces cleaner spike trains with less inter-spike interference, which was found empirically to improve classification performance on the BAF dataset.
+
+The decay factor $\beta$ is treated as a learnable parameter, initialized to $\beta_0 = 0.9$ and constrained to the interval $(0, 1)$ via a sigmoid reparameterization during optimization: $\beta = \sigma(\tilde{\beta})$, where $\tilde{\beta} \in \mathbb{R}$ is the unconstrained parameter and $\sigma(\cdot)$ is the logistic sigmoid function. The initialization value of 0.9 corresponds to a membrane time constant of approximately $\tau_m \approx 9.5 \Delta t$, which provides a moderate temporal integration window. During training, different neurons learn different decay rates, with neurons in earlier layers tending to develop faster decay (smaller $\beta$) for rapid feature extraction, while neurons in deeper layers tend to develop slower decay (larger $\beta$) for temporal evidence accumulation. This adaptive behavior emerges naturally from the gradient-based optimization without requiring explicit layer-wise initialization or regularization.
+
+The input current $I[t]$ is computed as a weighted linear combination of the input spike trains:
+\begin{equation}
+I[t] = \mathbf{W} \, \mathbf{S}_{\text{in}}[t] + \mathbf{b},
+\label{eq:lif-input-current}
+\end{equation}
+where $\mathbf{W}$ is the synaptic weight matrix, $\mathbf{S}_{\text{in}}[t]$ is the vector of input spikes at time step~$t$, and $\mathbf{b}$ is a learnable bias term. The firing threshold $V_{\text{thr}}$ is fixed at 1.0 throughout training and inference, a standard choice in the surrogate gradient literature that simplifies the implementation without sacrificing model expressiveness, as the effective threshold can be modulated through the weight magnitudes and bias terms.
+
+\subsection{Rate Coding and Output Decoding}
+
+The conversion of continuous input features to spike trains employs a rate coding scheme, where the firing probability of an input neuron at each time step is proportional to the normalized feature value. For an input feature $x_j \in [0, 1]$ (after min-max normalization), the probability of emitting a spike at time step~$t$ is:
+\begin{equation}
+P(S_{\text{in},j}[t] = 1) = x_j.
+\label{eq:rate-coding}
+\end{equation}
+Over $T = 25$ time steps, the expected firing count for neuron~$j$ is $\mathbb{E}[\sum_{t=1}^{T} S_{\text{in},j}[t]] = T \cdot x_j$, providing a stochastic but unbiased representation of the input feature magnitude. The output of the SNN is decoded by computing the average spike rate over the final layer across all time steps:
+\begin{equation}
+\hat{y} = \frac{1}{T} \sum_{t=1}^{T} S_{\text{out}}[t],
+\label{eq:rate-decoding}
+\end{equation}
+where $S_{\text{out}}[t]$ denotes the spike output of the final classification neuron at time step~$t$. This rate-based decoding provides a continuous prediction in $[0, 1]$ that is directly interpretable as the estimated probability of fraud.
+
+\section{Surrogate Gradient Descent (ArcTan)}
+\label{app:surrogate-gradient}
+
+The fundamental challenge in training spiking neural networks with gradient-based methods is the non-differentiable nature of the spike generation function. The Heaviside step function $\Theta(u) = \mathbb{1}[u \geq 0]$ used in Eq.~\eqref{eq:lif-discrete-spike} has a derivative that is zero everywhere except at $u = 0$, where it is undefined (Dirac delta). This means that standard backpropagation cannot propagate gradient information through the spike generation mechanism, as the chain rule would multiply all upstream gradients by zero, effectively preventing any parameter updates.
+
+\subsection{Surrogate Gradient Framework}
+
+The surrogate gradient approach circumvents this problem by replacing the true derivative of the Heaviside function with a smooth approximation during the backward pass, while preserving the exact Heaviside function during the forward pass. This creates an intentional asymmetry between the forward and backward computations:
+\begin{align}
+\text{Forward pass:} \quad S[t] &= \Theta(U[t] - V_{\text{thr}}), \label{eq:forward-heaviside} \\
+\text{Backward pass:} \quad \frac{\partial S[t]}{\partial U[t]} &\approx \sigma'_{\text{surr}}(U[t] - V_{\text{thr}}), \label{eq:backward-surrogate}
+\end{align}
+where $\sigma'_{\text{surr}}(\cdot)$ is the surrogate gradient function. This forward--backward asymmetry is well-motivated: the forward pass must use the exact Heaviside function to produce binary spike events that carry the temporal and computational advantages of spike-based computation, while the backward pass only requires a useful gradient signal for parameter optimization, not an exact derivative.
+
+\subsection{ArcTan Surrogate Gradient}
+
+In this thesis, the arc-tangent (ArcTan) function is employed as the surrogate gradient. The ArcTan surrogate gradient is defined as:
+\begin{equation}
+\sigma'_{\text{ATan}}(x) = \frac{\alpha / \pi}{1 + \left(\alpha \cdot x / \pi\right)^2},
+\label{eq:surrogate-atan}
+\end{equation}
+where $\alpha$ is a hyperparameter controlling the steepness (sharpness) of the surrogate function, and $x = U[t] - V_{\text{thr}}$ is the difference between the membrane potential and the threshold. The corresponding surrogate function (whose derivative gives Eq.~\eqref{eq:surrogate-atan}) is:
+\begin{equation}
+\sigma_{\text{ATan}}(x) = \frac{1}{\pi} \arctan\left(\frac{\alpha \cdot x}{\pi}\right) + \frac{1}{2}.
+\label{eq:surrogate-atan-function}
+\end{equation}
+
+The parameter $\alpha$ governs the trade-off between gradient fidelity and training stability. When $\alpha \to \infty$, the ArcTan surrogate approaches a Dirac delta function, closely matching the true derivative of the Heaviside step function but concentrating gradient information in an increasingly narrow band around the threshold, which can cause gradient instability and training divergence. When $\alpha \to 0$, the surrogate becomes a broad, flat function that distributes gradient information widely but provides poor resolution for distinguishing near-threshold from far-from-threshold membrane potentials, potentially slowing convergence. The default value $\alpha = 2.0$ was selected through empirical evaluation over the range $\{1.0, 1.5, 2.0, 3.0, 5.0\}$ on a validation split of the BAF dataset. The $\alpha = 2.0$ configuration achieved the best convergence speed and final classification performance, providing sufficiently steep gradients near the threshold for precise parameter updates while maintaining adequate gradient magnitude for neurons whose membrane potentials are moderately far from threshold.
+
+\subsection{Gradient Propagation Through Time}
+
+Combining the LIF dynamics with the surrogate gradient, the full gradient of the loss $\mathcal{L}$ with respect to the synaptic weights $\mathbf{W}$ is computed via backpropagation through time (BPTT). For a loss computed from the decoded output at time step~$t$, the gradient contribution through the spike at that time step is:
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mathbf{W}} \bigg|_t = \frac{\partial \mathcal{L}}{\partial S[t]} \cdot \sigma'_{\text{ATan}}(U[t] - V_{\text{thr}}) \cdot \frac{\partial U[t]}{\partial \mathbf{W}},
+\label{eq:bptt-gradient}
+\end{equation}
+where the first factor is the loss gradient with respect to the spike output, the second factor is the surrogate gradient that replaces the non-differentiable Heaviside derivative, and the third factor is the gradient of the membrane potential with respect to the weights, which can be computed exactly through the recurrent LIF dynamics. The total gradient is accumulated over all time steps:
+\begin{equation}
+\frac{\partial \mathcal{L}}{\partial \mathbf{W}} = \sum_{t=1}^{T} \frac{\partial \mathcal{L}}{\partial \mathbf{W}} \bigg|_t.
+\label{eq:bptt-total}
+\end{equation}
+The recurrent nature of the LIF dynamics (through the $\beta \, U[t-1]$ term) means that the gradient at time step~$t$ depends on all preceding time steps, creating the potential for vanishing or exploding gradients. However, the decay factor $\beta < 1$ naturally attenuates gradients over long time horizons, and the hard reset mechanism (which zeros the membrane potential after a spike) provides natural gradient clipping by preventing indefinite accumulation. In practice, the BPTT gradients remain well-behaved for the $T = 25$ time steps used in this thesis, and no gradient clipping was required during training.
+
+The choice of the ArcTan surrogate over alternatives such as the Fast Sigmoid $\sigma'(x) = \alpha / (1 + |\alpha x|)^2$ or the piecewise linear surrogate $\sigma'(x) = \max(0, 1 - |\alpha x|)$ is motivated by its smooth, non-vanishing tails. Unlike the piecewise linear surrogate, which has zero gradient outside a finite interval, the ArcTan surrogate provides non-zero (albeit small) gradients for all membrane potentials, ensuring that even neurons far from threshold receive some gradient signal. This property is particularly beneficial during the early stages of training when membrane potentials are randomly initialized and may be far from the firing threshold.

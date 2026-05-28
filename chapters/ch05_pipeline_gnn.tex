@@ -1,0 +1,976 @@
+% =====================================================================
+% CHAPTER 5: PIPELINE I — GRAPH NEURAL NETWORK–BASED FRAUD DETECTION
+% =====================================================================
+\chapter{Pipeline I: Graph Neural Network--Based Fraud Detection}
+\label{ch:gnn}
+
+\section{Data Preprocessing Techniques}
+
+The data preprocessing pipeline implements several critical transformations to prepare the raw tabular data for graph-based learning:
+
+\textbf{Missing Value Handling:} The implementation distinguishes between two types of missing data. Features where absence is informative (e.g., credit risk score) are mapped to a dedicated ``unknown'' bucket, preserving the signal that missingness itself may carry. Features where absence should not create connections (e.g., zip count) are skipped entirely, preventing spurious graph connections between users who both lack the same feature.
+
+\textbf{Feature Column Selection:} The builder identifies all columns suitable for user node features by excluding identifying fields (email, phone\_home, phone\_mobile, device\_id, ip\_address, name) and the target label (fraud\_bool, month) from the DataFrame columns. This prevents the model from memorizing identities while still capturing the relational patterns these identifiers create through graph structure.
+
+\textbf{Continuous Feature Discretization:} High-variance continuous features are discretized into categorical representations using domain-informed bucketing strategies (equal-width for credit scores, decade bucketing for ages, threshold-based for credit limits, and activity/velocity tiers for behavioral metrics).
+
+\textbf{One-Hot Expansion:} Categorical columns encoded as one-hot vectors in the original dataset are scanned for active values, with each active category creating or retrieving a shared attribute node and establishing an edge to the current user.
+
+\section{Model Selection and Justification}
+
+Three GNN architectures were selected to represent fundamentally different paradigms for graph-based fraud detection, enabling a comprehensive comparison of spatial, quantum-inspired, and spectral approaches.
+
+\subsection{GraphSAGE: Spatial Neighborhood Aggregation}
+
+The GNNFraudDetector utilizes the GraphSAGE (Graph Sample and AggregatE) architecture, which generates node embeddings by sampling and aggregating features from a node's local neighborhood. This architecture is particularly well-suited for our task because it allows the model to learn inductive representations for users, even when encountering new users or graph structures during inference. By employing this approach, we move beyond analyzing isolated user features to understanding the complex topological patterns indicative of fraudulent behavior.
+
+The architectural design follows a hierarchical structure consisting of two primary stages: graph-based feature learning and node classification. The first stage is composed of three SAGEConv layers, which are responsible for propagating information across the graph structure. These layers operate on the input feature matrix and the edge index to produce high-dimensional embeddings that encapsulate both the intrinsic features of a user and the aggregate information of their neighbors. The second stage consists of a fully connected classifier head (Multi-Layer Perceptron) designed to classify the learned embeddings.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figure_2}
+\caption{Architecture of the GNNFraudDetector (GraphSAGE). The pipeline processes node features through three SAGEConv layers with BatchNorm, filters to user nodes, then passes through two fully connected layers for binary classification.}
+\label{fig:gnn-fig2}
+\end{figure}
+
+The model comprises three SAGEConv layers: the first layer projects the input dimension to \texttt{hidden\_dim}, the second maintains \texttt{hidden\_dim}, and the third reduces the dimensionality by half to \texttt{hidden\_dim/2}. The classifier head consists of two fully connected layers: FC1 maps from \texttt{hidden\_dim/2} to \texttt{hidden\_dim/4}, and FC2 maps from \texttt{hidden\_dim/4} to the output dimension of 2 (logits for the two classes).
+
+\begin{table}[H]
+\centering
+\caption{GNNFraudDetector Layer Architecture}
+\label{tab:gnn-sage-layers}
+\small
+\begin{tabularx}{0.9\textwidth}{lXllX}
+\toprule
+\textbf{Layer} & \textbf{Operation} & \textbf{Input Dim} & \textbf{Output Dim} & \textbf{Regularization} \\
+\midrule
+conv1 & SAGEConv & F & 128 & BN + ReLU + Dropout(0.5) \\
+conv2 & SAGEConv & 128 & 128 & BN + ReLU + Dropout(0.5) \\
+conv3 & SAGEConv & 128 & 64 & ReLU + Dropout(0.5) \\
+fc1 & Linear & 64 & 32 & ReLU + Dropout(0.5) \\
+fc2 & Linear & 32 & 2 & --- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Quantum GNN: Hybrid Quantum-Classical Approach}
+
+The Quantum Graph Neural Network (QGNN), implemented as PaperQGNN, represents a hybrid quantum-classical approach that aims to leverage the high-dimensional representational capacity of quantum circuits to capture complex patterns in financial data. The architecture processes node features through a sequence of quantum-inspired transformations before applying graph aggregation and classical classification.
+
+The system consists of three core components: the Angle Encoding layer, the Variational Quantum Circuit (VQC) layers, and the Classical Classifier (Readout) layer. The design encodes classical tabular data into a high-dimensional Hilbert space, unlike classical GNNs that operate directly on Euclidean feature vectors.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figure_6}
+\caption{Architecture of the Proposed Quantum GNN (PaperQGNN). The pipeline processes node features through Angle Encoding, stacks of VQC layers, Graph Aggregation, and a Classical MLP Classifier.}
+\label{fig:gnn-fig6}
+\end{figure}
+
+\textbf{Angle Encoding:} The AngleEncoding class serves as the feature embedding module. It accepts the input feature dimension and the number of qubits. The forward method first projects the input features onto the number of qubits using a linear layer, producing rotation angles $\theta = W_\theta x + b_\theta$. It then maps these angles into a quantum state space by computing both cosine and sine components:
+\begin{equation}
+\phi(x) = [\cos(\theta_1), \sin(\theta_1), \cos(\theta_2), \sin(\theta_2), \ldots, \cos(\theta_n), \sin(\theta_n)]
+\end{equation}
+The output is a concatenation of these components, resulting in a feature dimension of $2 \times n_{\text{qubits}}$.
+
+\textbf{VQC Layer:} The VQCLayer class simulates a single layer of a Parameterized Quantum Circuit. The quantum unitary transformation $U(w)$ is realized using a classical linear layer followed by a hyperbolic tangent (\texttt{tanh}) activation function:
+\begin{equation}
+h^{(l+1)} = \tanh(W_v h^{(l)} + b_v)
+\end{equation}
+The \texttt{tanh} activation approximates the bounded range of expectation values typically obtained from measuring quantum states (such as the Pauli-Z operator), which naturally lie between $-1$ and $+1$, preventing unbounded feature drift.
+
+\textbf{QGNN Forward Pass:} Algorithm~\ref{alg:qgnn-forward} presents the complete QGNN forward pass procedure.
+
+\begin{algorithm}[H]
+\caption{QGNN Forward Pass}
+\label{alg:qgnn-forward}
+\begin{algorithmic}[1]
+\REQUIRE Node features $X \in \mathbb{R}^{N \times F}$, edge index $\mathcal{E}$, user indices $\mathcal{U}$, number of VQC layers $L$
+\ENSURE Fraud probability $\hat{y} \in [0,1]^{| \mathcal{U} |}$
+\STATE $\theta \leftarrow W_\theta X + b_\theta$ \COMMENT{Project to qubit space}
+\STATE $h \leftarrow [\cos(\theta) \| \sin(\theta)]$ \COMMENT{Angle encoding}
+\FOR{$l = 1$ to $L$}
+    \STATE $h \leftarrow \tanh(W_v^{(l)} h + b_v^{(l)})$ \COMMENT{VQC layer}
+\ENDFOR
+\STATE $h_{\text{agg}} \leftarrow \text{ScatterMean}(h, \mathcal{E})$ \COMMENT{Graph aggregation}
+\STATE $h \leftarrow (h + h_{\text{agg}}) / 2.0$ \COMMENT{Residual connection}
+\STATE $h_{\text{user}} \leftarrow h[\mathcal{U}]$ \COMMENT{Filter user nodes}
+\STATE $\hat{y} \leftarrow \sigma(W_{\text{out}} \text{ReLU}(W_{\text{hid}} h_{\text{user}}))$ \COMMENT{MLP classifier}
+\RETURN $\hat{y}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Split GNN: Spectral Graph Splitting with Wavelet Filtering}
+
+The Split Graph Neural Network introduces a fundamentally different paradigm: learning to partition the graph structure itself. The core innovation lies in its dual-mechanism design. First, an Edge Classifier module learns to score each edge in the graph, predicting whether the connected nodes belong to the same class. Second, based on these predictions, the graph is split into two complementary edge sets, and separate Beta wavelet filters are applied to each partition.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figure_11}
+\caption{Split GNN Architecture --- The complete pipeline from input features to binary classification output.}
+\label{fig:gnn-fig11}
+\end{figure}
+
+\textbf{Edge Classifier:} The Edge Classifier is a novel module that learns to score each edge in the graph based on the features of its endpoint nodes. The classifier first projects the raw node features through a linear layer $W_x$: Linear(\texttt{input\_dim}, \texttt{hidden\_dim}), then for each edge $(u, v)$, concatenates the projected representations as $[h_u, h_v, h_u - h_v]$. The edge score is computed as:
+\begin{equation}
+\psi(u,v) = \tanh\bigl(W \cdot [h_u \| h_v \| (h_u - h_v)]\bigr)
+\label{eq:edge-classifier}
+\end{equation}
+where $W$: Linear($3 \times \texttt{hidden\_dim}$, 1) maps this concatenation to a scalar score in the range $[-1, +1]$. The sign of $\psi$ determines the edge polarity: positive scores indicate same-class edges, while negative scores indicate different-class edges.
+
+The edge classifier is supervised through a hinge loss computed on labeled training edges:
+\begin{equation}
+\mathcal{L}_{\text{edge}} = \text{mean}\bigl(\max(0, 1 - y_{\text{edge}} \cdot \psi)\bigr)
+\label{eq:edge-loss}
+\end{equation}
+where $y_{\text{edge}} = +1$ if both endpoints share the same class, and $y_{\text{edge}} = -1$ if they differ. Balanced sampling is applied to the edge loss computation to prevent class imbalance from biasing the gradient.
+
+\textbf{Graph Splitting Mechanism:} Based on the edge scores, the original edge set $E$ is partitioned into $E^+$ (positive edges, $\psi > 0$) and $E^-$ (negative edges, $\psi < 0$). The split point $K$ parameter controls how these edge sets are utilized in the wavelet filtering stage. When $K \geq 0$, the first $K+1$ wavelet terms in the split branch use the positive Laplacian (derived from $E^+$), while the remaining terms use the negative Laplacian (derived from $E^-$). When $K = -1$, all split-branch wavelet terms exclusively use the negative Laplacian.
+
+\textbf{Beta Wavelet Filtering:} The Beta Wavelet module implements dual-branch spectral filtering on the graph. Rather than materializing the full graph Laplacian matrix (which would require $O(N^2)$ memory), the module uses a memory-efficient CachedLaplacian class that stores only the degree vector and computes Laplacian-vector products on-the-fly using scatter operations. The Beta wavelet filter of order $C$ generates $C+1$ frequency bands using the Beta polynomial coefficients:
+\begin{equation}
+\beta^*(p, q) = \frac{1}{2 \cdot p! \cdot q! / (p+q+1)!}
+\label{eq:beta-coeff}
+\end{equation}
+where $p = i$ and $q = C - i$ for wavelet term $i$.
+
+For the split branch, each wavelet term $i$ is computed as:
+\begin{equation}
+h_{\hat{}}^{(i)} = \begin{cases}
+\beta^*(i, C-i) \cdot L_{\text{pos}}^i \cdot h \cdot W_{s,\text{proj}}[i] & \text{if } i \leq K \\
+\beta^*(i, C-i) \cdot L_{\text{neg}}^i \cdot h \cdot W_{s,\text{proj}}[i] & \text{if } i > K
+\end{cases}
+\label{eq:split-wavelet}
+\end{equation}
+
+For the original branch, all wavelet terms use the original Laplacian:
+\begin{equation}
+h_{\circ}^{(i)} = \beta^*(i, C-i) \cdot L_{\text{orig}}^i \cdot h \cdot W_{o,\text{proj}}[i]
+\label{eq:orig-wavelet}
+\end{equation}
+
+Each wavelet output is individually projected through a learned linear transformation and then summed (not concatenated), reducing the output dimension from $(C+1) \times \texttt{hidden\_dim}$ to $\texttt{hidden\_dim}$. Layer normalization and GELU activation are applied after the accumulated sum.
+
+\textbf{Residual Connection and Feature Fusion:} A learned linear transformation $W_t$ with GELU activation is applied to the original hidden representation:
+\begin{equation}
+h_{\text{res}} = \text{GELU}(W_t \cdot h)
+\label{eq:residual}
+\end{equation}
+The three representations are concatenated: $h_{\text{final}} = [h_{\hat{}} \| h_{\circ} \| h_{\text{res}}]$ of dimension $3 \times \texttt{hidden\_dim}$, providing complementary information from the split graph, the original graph, and the raw feature signal.
+
+\textbf{Total Loss Function:} The total training loss combines node classification and edge scoring objectives:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{node}} + \gamma_{\text{edge}} \cdot \mathcal{L}_{\text{edge}}
+\label{eq:total-loss}
+\end{equation}
+where $\mathcal{L}_{\text{node}}$ uses Focal Loss with parameters $\alpha = 0.25$ and $\gamma_{\text{focal}} = 2.0$:
+\begin{equation}
+\mathcal{L}_{\text{node}} = -\alpha_t (1 - p_t)^{\gamma_{\text{focal}}} \log(p_t)
+\label{eq:focal-loss}
+\end{equation}
+
+\textbf{SplitGNN Training Procedure:} Algorithm~\ref{alg:splitgnn-training} presents the complete SplitGNN training procedure.
+
+\begin{algorithm}[H]
+\caption{SplitGNN Training}
+\label{alg:splitgnn-training}
+\begin{algorithmic}[1]
+\REQUIRE Graph $G = (V, E)$, features $X$, labels $Y$, edge labels $Y_e$, hyperparameters $\gamma_{\text{edge}}, C, K$
+\ENSURE Trained model parameters $\Theta$
+\STATE Initialize model parameters $\Theta$
+\FOR{epoch $= 1$ to $\text{max\_epochs}$}
+    \STATE $h \leftarrow \text{Dropout}(\text{GELU}(\text{Linear}(X)))$ \COMMENT{Input projection}
+    \STATE $\psi \leftarrow \text{EdgeClassifier}(h, E)$ \COMMENT{Compute edge scores}
+    \STATE $E^+, E^- \leftarrow \text{SplitEdges}(E, \psi)$ \COMMENT{Graph splitting}
+    \STATE $h_{\hat{}} \leftarrow \text{BetaWavelet}(h, L_{\text{pos}}, L_{\text{neg}}, C, K)$ \COMMENT{Split branch}
+    \STATE $h_{\circ} \leftarrow \text{BetaWavelet}(h, L_{\text{orig}}, C)$ \COMMENT{Original branch}
+    \STATE $h_{\text{res}} \leftarrow \text{GELU}(W_t \cdot h)$ \COMMENT{Residual}
+    \STATE $h_{\text{final}} \leftarrow [h_{\hat{}} \| h_{\circ} \| h_{\text{res}}]$ \COMMENT{Feature fusion}
+    \STATE $\hat{y} \leftarrow \text{MLP}(h_{\text{final}})$ \COMMENT{Classification}
+    \STATE $\mathcal{L} \leftarrow \mathcal{L}_{\text{node}}(\hat{y}, Y) + \gamma_{\text{edge}} \cdot \mathcal{L}_{\text{edge}}(\psi, Y_e)$ \COMMENT{Total loss}
+    \STATE $\Theta \leftarrow \Theta - \eta \nabla_\Theta \mathcal{L}$ \COMMENT{Gradient update}
+    \IF{early stopping criterion met}
+        \STATE \textbf{break}
+    \ENDIF
+\ENDFOR
+\RETURN $\Theta$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Feature Engineering and Selection}
+
+The feature engineering pipeline implements the transformations described in the graph construction module, with the following additional considerations:
+
+\textbf{Type-Aware Node Indexing:} The use of composite keys (\texttt{node\_type}, \texttt{node\_id}) in the \texttt{node\_to\_idx} dictionary is a robust design choice that eliminates the risk of ID collisions between different node types. This approach scales well as new node types are added without requiring manual ID space management.
+
+\textbf{Shared Attribute Nodes:} The design correctly implements shared attribute nodes rather than per-user copies. This means that two users with the same device OS (e.g., both using Windows) connect to the same Windows node, creating an indirect connection between them. This is the fundamental mechanism that enables the GNN to learn relational fraud patterns.
+
+\textbf{Feature Padding:} User nodes are populated with their full feature vectors in the global feature matrix, while attribute node rows are zero-padded since they serve as structural intermediaries for message passing rather than feature carriers.
+
+% TODO: Add detailed feature importance analysis from model interpretability experiments
+
+\section{Hyperparameter Optimisation Strategy}
+
+The hyperparameter optimisation strategy varies by architecture:
+
+\textbf{GraphSAGE:} The primary hyperparameter is the hidden dimension, explored at values 64 and 128. All other parameters (learning rate 0.001, dropout 0.5, 3 SAGE layers, Adam optimizer) are fixed based on established best practices.
+
+\textbf{QGNN:} The key quantum-specific hyperparameters are the number of qubits (6 and 16) and the number of VQC layers (1, 2, and 4), yielding four experimental configurations.
+
+\textbf{Split GNN:} The most extensive hyperparameter search involves three parameters across a grid of 45 experiments: $\gamma_{\text{edge}}$ (5 values: 0.2, 0.4, 0.6, 0.8, 1.0), $C$ (3 values: 1, 2, 3), and $K$ (4 values: $-1$, 0, 1, 2).
+
+\begin{table}[H]
+\centering
+\caption{Split GNN Fixed Hyperparameters}
+\label{tab:gnn-split-fixed}
+\small
+\begin{tabularx}{0.92\textwidth}{lXP{5.5cm}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\midrule
+hidden\_dim & 8 & Hidden representation dimension \\
+Learning Rate & 0.001 & Base learning rate (Adam optimizer) \\
+Max LR & 0.005 & Peak LR for OneCycleLR scheduler \\
+Weight Decay & 5e-5 & L2 regularization coefficient \\
+Dropout & 0.1 & Dropout probability \\
+Epochs & 200 & Maximum training epochs \\
+Patience & 20 & Early stopping patience \\
+Refit Epochs & 5 & Additional fine-tuning epochs \\
+Focal alpha & 0.25 & Focal Loss class weighting \\
+Focal gamma & 2.0 & Focal Loss focusing parameter \\
+Batch Strategy & Full-batch & Entire graph processed at once \\
+Target FPR & 5\% & Operating threshold calibration \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Software Implementation Details}
+
+\subsection{GraphSAGE Implementation}
+
+The GNNFraudDetector is implemented as a subclass of PyTorch \texttt{nn.Module}. Batch Normalization (BatchNorm1d) follows the first two convolutional layers, and Dropout regularization with probability 0.5 is applied after every activation layer. The training pipeline implements a temporal validation strategy with stratified sampling, weighted CrossEntropyLoss, Adam optimizer with weight decay, ReduceLROnPlateau scheduler, gradient clipping, and early stopping.
+
+\begin{table}[H]
+\centering
+\caption{GraphSAGE Training Hyperparameters}
+\label{tab:gnn-sage-hparams}
+\small
+\begin{tabularx}{0.92\textwidth}{lXP{5cm}}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} & \textbf{Notes} \\
+\midrule
+Optimizer & Adam & weight\_decay = 1e-5 \\
+Learning Rate & 0.001 & Fixed initial LR \\
+LR Scheduler & ReduceLROnPlateau & factor=0.5, patience=10 \\
+Loss Function & CrossEntropyLoss & Weighted by class ratio \\
+Max Epochs & 200 & With early stopping \\
+Early Stopping Patience & 15 epochs & Based on validation AUC \\
+Gradient Clipping & Max norm = 1.0 & Prevents exploding gradients \\
+Train / Val / Test Split & 80\% / 20\% / Hold-out & Stratified + temporal \\
+Fraud Class Weight & $\sim$96--99x & num\_legit / num\_fraud \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{QGNN Implementation}
+
+The PaperQGNN implementation uses AdamW optimizer (lr=0.001, weight\_decay=1e-4), Cosine Annealing scheduler, BCEWithLogitsLoss with \texttt{pos\_weight} = $1.5 \times$ inverse class ratio, gradient clipping (max norm=1.0), and early stopping (patience=20). A critical design decision is the use of \texttt{tanh} to approximate bounded quantum expectation values.
+
+\textbf{Barren Plateaus Analysis:} A key consideration in variational quantum circuits is the barren plateaus phenomenon, where the gradient variance decreases exponentially with the number of qubits. In our classical simulation, the \texttt{tanh} bounded activation partially mitigates this effect by preventing unbounded feature drift, but the fundamental limitation remains: as the number of qubits increases, the randomly initialized VQC layers tend to produce outputs that are increasingly similar, reducing the discriminative power of the model. This explains why the 6-qubit configurations showed degraded performance compared to the 16-qubit ones in our experiments---the wider feature space (16 qubits) provides sufficient representational capacity even when some dimensions become uninformative, while the narrower space (6 qubits) lacks this redundancy.
+
+\subsection{Split GNN Implementation}
+
+The Split GNN implementation includes a two-phase training protocol. In the first phase, the model trains for up to 200 epochs with balanced sampling, monitoring validation AUC for early stopping. In the second phase (refit), the best checkpoint is restored and trained for 5 additional epochs at a reduced learning rate (0.0001) using combined training and validation labels. Gradient checkpointing is used during training to reduce peak memory usage. The CachedLaplacian class stores only the degree vector and computes Laplacian-vector products on-the-fly using scatter operations, reducing memory from $O(N^2)$ to $O(N + |E|)$.
+
+\section{Experimental Design and Evaluation}
+
+\subsection{Experimental Setup}
+
+All experiments use the heterogeneous fraud detection graph constructed by the FraudGraphBuilder, containing 1,000,047 nodes and 14,491,868 edges. The temporal data split allocates months 0--4 for training (675,666 samples), month 5 for validation (119,323 samples), and months 6--7 for testing (205,011 samples). This temporal split ensures evaluation on genuinely unseen future data, simulating real-world deployment conditions.
+
+The extreme class imbalance---2,878 fraud cases (1.4\%) versus 202,133 legitimate cases (98.6\%) in the test set---is a defining characteristic of the evaluation. All models are evaluated at a fixed 5\% false positive rate operating point, corresponding to the practical constraint of limiting false alarms in production fraud detection systems.
+
+\subsection{Baselines and Comparative Benchmarks}
+
+\subsubsection{GraphSAGE Experiments}
+
+Two experiments evaluate the impact of hidden dimension size on GraphSAGE performance, using identical training configurations with the only variation being the hidden dimension parameter.
+
+\begin{table}[H]
+\centering
+\caption{GraphSAGE Experiment Configurations}
+\label{tab:gnn-sage-configs}
+\small
+\begin{tabularx}{0.85\textwidth}{lXX}
+\toprule
+\textbf{Parameter} & \textbf{Experiment 1} & \textbf{Experiment 2} \\
+\midrule
+Hidden Dimension & 128 & 64 \\
+FC1 Output Dim & 32 & 16 \\
+Total Parameters & $\sim$104K & $\sim$26K \\
+Train Samples & 635,991 & 675,666 \\
+Val Samples & 158,998 & 119,323 \\
+Test Samples & 205,011 & 205,011 \\
+Fraud Class Weight & 96.53 & 99.25 \\
+Epochs Trained & 188 (early stop) & 158 (early stop) \\
+Best Val AUC & 0.8858 & 0.8827 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{QGNN Experiments}
+
+Four experiments vary the number of qubits (width) and VQC layers (depth) for the Quantum GNN.
+
+\begin{table}[H]
+\centering
+\caption{QGNN Experiment Configurations}
+\label{tab:gnn-qgnn-configs}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabularx}{0.95\textwidth}{lrrlrrr}
+\toprule
+\textbf{Exp.} & \textbf{Qubits} & \textbf{VQC Layers} & \textbf{Train Time} & \textbf{ROC AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Epochs} \\
+\midrule
+1 & 16 & 4 & $\sim$75 min & 0.8769 & 49.24\% & 200 \\
+2 & 6 & 1 & $\sim$37 min & 0.8602 & 46.04\% & 200 \\
+3 & 6 & 2 & $\sim$38 min & 0.8574 & 44.82\% & 200 \\
+4 & 16 & 1 & $\sim$70 min & 0.8731 & 49.13\% & 200 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Split GNN Experiments}
+
+The Split GNN hyperparameter tuning study systematically varies three architectural hyperparameters across a comprehensive grid of 45 experiments: $\gamma_{\text{edge}}$ (5 values: 0.2, 0.4, 0.6, 0.8, 1.0), $C$ (3 values: 1, 2, 3), and $K$ (4 values: $-1$, 0, 1, 2).
+
+\subsubsection{Comparison with Published Baselines}
+
+Table~\ref{tab:gnn-published-baselines} compares our best results with published baselines on the same or comparable fraud detection datasets.
+
+\begin{table}[H]
+\centering
+\caption{Comparison with Published Baselines}
+\label{tab:gnn-published-baselines}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{lXXX}
+\toprule
+\textbf{Method} & \textbf{Dataset} & \textbf{ROC AUC} & \textbf{Key Feature} \\
+\midrule
+GCN~\cite{kipf2017semisupervised} & IEEE-CIS & 0.87 & Spectral convolution \\
+GAT~\cite{velivckovic2018graph} & IEEE-CIS & 0.89 & Attention-weighted aggregation \\
+GraphSAGE~\cite{hamilton2017inductive} & IEEE-CIS & 0.88 & Neighborhood sampling \\
+QGNN~\cite{herrman2022quantum} & Synthetic & 0.85 & Quantum feature maps \\
+\midrule
+GraphSAGE (Ours) & Basehiem et al. & 0.8859 & Heterogeneous graph \\
+QGNN (Ours) & Basehiem et al. & 0.8769 & Simulated VQC \\
+Split GNN (Ours) & Basehiem et al. & 0.8806 & Edge splitting + wavelet \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Evaluation Metrics}
+
+The evaluation employs multiple complementary metrics:
+
+\begin{itemize}
+\item \textbf{ROC AUC:} Area Under the Receiver Operating Characteristic Curve, measuring the model's ability to rank fraud cases higher than legitimate ones across all thresholds.
+\item \textbf{TPR at 5\% FPR:} True Positive Rate at the calibrated 5\% False Positive Rate operating point, representing the practical fraud detection rate under production constraints.
+\item \textbf{AUC-PR:} Area Under the Precision-Recall Curve, particularly informative under extreme class imbalance.
+\item \textbf{Fraud Precision/Recall/F1:} Class-specific metrics for the minority fraud class.
+\item \textbf{Confusion Matrix Components:} TP, FP, TN, FN counts at the operating threshold.
+\item \textbf{Generalization Gap:} Difference between validation and test AUC, indicating distributional shift.
+\end{itemize}
+
+\subsection{Ablation Studies}
+
+\subsubsection{GraphSAGE Hidden Dimension Ablation}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_3}
+\caption{GraphSAGE Performance Comparison. The dual-axis chart shows ROC AUC (green bars, left axis) and True Positive Rate at 5\% FPR (orange bars, right axis) for both hidden dimension configurations.}
+\label{fig:gnn-fig3}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{GraphSAGE Detailed Performance Metrics}
+\label{tab:gnn-sage-metrics}
+\small
+\begin{tabularx}{0.85\textwidth}{Xrr}
+\toprule
+\textbf{Metric} & \textbf{Hidden Dim 128} & \textbf{Hidden Dim 64} \\
+\midrule
+Test ROC AUC & 0.8859 & 0.8829 \\
+Operating Threshold & 0.7621 & 0.7601 \\
+FPR at Threshold & 4.98\% & 4.99\% \\
+TPR at Threshold & 52.54\% & 51.18\% \\
+Fraud Precision & 0.13 & 0.13 \\
+Fraud Recall & 0.53 & 0.51 \\
+Fraud F1-Score & 0.21 & 0.20 \\
+Weighted Accuracy & 94\% & 94\% \\
+True Negatives (TN) & 192,065 & 192,046 \\
+False Positives (FP) & 10,068 & 10,087 \\
+False Negatives (FN) & 1,366 & 1,405 \\
+True Positives (TP) & 1,512 & 1,473 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_4}
+\caption{Experiment 1 (Hidden Dim 128) --- ROC Curve and Confusion Matrix. The model achieved the best ROC AUC of 0.8859 with a TPR of 52.54\% at 5\% FPR.}
+\label{fig:gnn-fig4}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_5}
+\caption{Experiment 2 (Hidden Dim 64) --- ROC Curve and Confusion Matrix. The model achieved an AUC of 0.8829 with a TPR of 51.18\% at 5\% FPR.}
+\label{fig:gnn-fig5}
+\end{figure}
+
+\subsubsection{QGNN Qubit and Depth Ablation}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_7}
+\caption{Performance Comparison of QGNN Configurations. Dual-axis chart showing ROC AUC (blue, left) and TPR at 5\% FPR (orange, right).}
+\label{fig:gnn-fig7}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Confusion Matrix Details for All QGNN Experiments}
+\label{tab:gnn-qgnn-confusion}
+\small
+\begin{tabularx}{0.9\textwidth}{lXrrrr}
+\toprule
+\textbf{Experiment} & \textbf{Threshold} & \textbf{TN} & \textbf{FP} & \textbf{FN} & \textbf{TP} \\
+\midrule
+1 (16Q, 4L) & 0.7983 & 192,032 & 10,101 & 1,461 & 1,417 \\
+2 (6Q, 1L) & 0.7857 & 192,025 & 10,108 & 1,553 & 1,325 \\
+3 (6Q, 2L) & 0.8223 & 192,018 & 10,115 & 1,588 & 1,290 \\
+4 (16Q, 1L) & 0.7905 & 192,026 & 10,107 & 1,464 & 1,414 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_8}
+\caption{Experiment 1 (16 Qubits, 4 Layers) --- ROC Curve and Confusion Matrix. Best QGNN configuration with AUC = 0.8769.}
+\label{fig:gnn-fig8}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_9}
+\caption{Experiment 4 (16 Qubits, 1 Layer) --- ROC Curve and Confusion Matrix. AUC = 0.8731.}
+\label{fig:gnn-fig9}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_9}
+\caption{Experiment 2 (6 Qubits, 1 Layer) --- ROC Curve and Confusion Matrix. AUC = 0.8602.}
+\label{fig:gnn-fig10}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_10}
+\caption{Experiment 3 (6 Qubits, 2 Layers) --- ROC Curve and Confusion Matrix. AUC = 0.8574.}
+\label{fig:gnn-qgnn-exp3-roc}
+\end{figure}
+
+\subsubsection{Split GNN Hyperparameter Ablation}
+
+\paragraph{Effect of $\gamma_{\text{edge}}$ (Edge Loss Weight)}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_12}
+\caption{Effect of $\gamma_{\text{edge}}$ on model performance --- best/mean/worst AUC (left) and fraud detection rate (right).}
+\label{fig:gnn-fig12}
+\end{figure}
+
+\paragraph{Effect of Wavelet Order $C$}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_13}
+\caption{Effect of wavelet order $C$ on Test AUC --- distribution box plots (left) and best vs worst comparison (right).}
+\label{fig:gnn-fig13}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Performance Summary by Wavelet Order}
+\label{tab:gnn-wavelet-summary}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{Xrrrrr}
+\toprule
+\textbf{Wavelet Order $C$} & \textbf{Mean AUC} & \textbf{Best AUC} & \textbf{Worst AUC} & \textbf{Std Dev} & \textbf{\# Configs} \\
+\midrule
+$C = 1$ (2 bands) & 0.8789 & 0.8806 & 0.8705 & 0.003 & 10 \\
+$C = 2$ (3 bands) & 0.8660 & 0.8788 & 0.8402 & 0.009 & 15 \\
+$C = 3$ (4 bands) & 0.8665 & 0.8804 & 0.8472 & 0.010 & 20 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Effect of Split Point $K$}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_1}
+\caption{Effect of split point $K$ on Test AUC --- distribution box plots (left) and interaction with wavelet order $C$ (right).}
+\label{fig:gnn-k-effect}
+\end{figure}
+
+\paragraph{Complete 45-Experiment Results}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_2}
+\caption{Complete heatmap of Test ROC AUC across all 45 experiments, organized by $(C, K)$ configuration and $\gamma_{\text{edge}}$ value.}
+\label{fig:gnn-ablation-heatmap}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Top 10 Split GNN Configurations}
+\label{tab:gnn-top10}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{cXrrr}
+\toprule
+\textbf{Rank} & \textbf{Configuration} & \textbf{Test AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Val AUC} \\
+\midrule
+1 & $\gamma$=1.0, C=1, K=0 & 0.8806 & 50.6\% & 0.8808 \\
+2 & $\gamma$=0.4, C=3, K=$-$1 & 0.8804 & 50.1\% & 0.8800 \\
+3 & $\gamma$=0.8, C=1, K=0 & 0.8804 & 50.2\% & 0.8798 \\
+4 & $\gamma$=0.6, C=3, K=1 & 0.8803 & 49.6\% & 0.8802 \\
+5 & $\gamma$=0.6, C=1, K=0 & 0.8801 & 50.8\% & 0.8811 \\
+6 & $\gamma$=0.4, C=1, K=0 & 0.8800 & 50.3\% & 0.8797 \\
+7 & $\gamma$=0.6, C=1, K=$-$1 & 0.8800 & 50.5\% & 0.8792 \\
+8 & $\gamma$=0.4, C=1, K=$-$1 & 0.8797 & 50.8\% & 0.8807 \\
+9 & $\gamma$=0.6, C=2, K=1 & 0.8788 & 50.0\% & 0.8793 \\
+10 & $\gamma$=0.2, C=1, K=0 & 0.8781 & 50.1\% & 0.8791 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_3}
+\caption{Visual comparison of the top 10 configurations by Test ROC AUC and fraud detection rate.}
+\label{fig:gnn-top10-visual}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Bottom 5 Split GNN Configurations}
+\label{tab:gnn-bottom5}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{cp{4.5cm}rrrr}
+\toprule
+\textbf{Rank} & \textbf{Configuration} & \textbf{Test AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Fraud Prec.} & \textbf{Fraud Recall} \\
+\midrule
+41 & $\gamma$=1.0, C=2, K=$-$1 & 0.8402 & 31.5\% & 0.08 & 0.32 \\
+42 & $\gamma$=0.2, C=3, K=$-$1 & 0.8480 & 34.9\% & 0.09 & 0.35 \\
+43 & $\gamma$=0.6, C=3, K=$-$1 & 0.8472 & 38.6\% & 0.10 & 0.39 \\
+44 & $\gamma$=0.8, C=2, K=$-$1 & 0.8527 & 41.4\% & 0.11 & 0.41 \\
+45 & $\gamma$=0.2, C=3, K=2 & 0.8508 & 47.8\% & 0.12 & 0.48 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Cross-Version Fairness Ablation}
+
+The cross-version fairness study evaluates the GraphSAGE architecture (hidden\_dim=128) across six data distribution variants (Version 0 through Version V).
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{Experiment Configuration and Dataset Characteristics Across All Six Data Versions}
+\label{tab:gnn-version-configs}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lrrrrrrr}
+\toprule
+\textbf{Version} & \textbf{Edges} & \textbf{Train} & \textbf{Val} & \textbf{Test} & \textbf{Train Fraud} & \textbf{Train Legit} & \textbf{Fraud Wt.} \\
+\midrule
+V0 (Base) & 14,491,868 & 675,666 & 119,324 & 205,010 & 6,740 & 668,926 & 99.25 \\
+V I & 14,479,509 & 675,668 & 119,322 & 205,010 & 6,740 & 668,928 & 99.25 \\
+V II & 14,547,755 & 675,666 & 119,324 & 205,010 & 6,740 & 668,926 & 99.25 \\
+V III & 14,541,726 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+V IV & 14,541,548 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+V V & 14,542,330 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{landscape}
+
+\subsubsection{Resampling Strategy Ablation}
+
+\begin{table}[H]
+\centering
+\caption{Resampling Experiment Configuration Comparison}
+\label{tab:gnn-resample-config}
+\small
+\begin{tabularx}{0.95\textwidth}{lXX}
+\toprule
+\textbf{Parameter} & \textbf{Baseline} & \textbf{Resampling Experiment} \\
+\midrule
+Architecture & GraphSAGE & GraphSAGE \\
+Hidden Dimension & 128 & 128 \\
+Data Version & V0 (Base) & V0 (Base) \\
+Train / Val / Test Split & 675,666 / 119,323 / 205,011 & 675,666 / 119,323 / 205,011 \\
+Split Strategy & Temporal & Temporal \\
+Graph Nodes & 1,000,047 & 1,000,047 \\
+Class Weight (Fraud) & 96.53 & 10.00 \\
+Class Weight (Legitimate) & 1.00 & 0.05 \\
+Weight Strategy & Inverse Frequency & ADASYN-Informed \\
+Training Sampler & Standard & WeightedRandomSampler \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Statistical Significance Testing}
+
+The performance differences between architectures were evaluated using bootstrap resampling with 1,000 iterations to estimate 95\% confidence intervals for the ROC AUC metric. Additionally, the Split GNN hyperparameter study provides distributional statistics (mean, standard deviation, best, worst) across the 45-experiment grid, enabling assessment of whether observed performance differences are statistically meaningful given the configuration variance.
+
+\section{Results and Discussion}
+
+\subsection{GraphSAGE Results}
+
+Experiment 1 (hidden dimension 128) yielded the best overall performance with a test ROC AUC of 0.8859 and a True Positive Rate of 52.54\% at the 5\% FPR operating threshold. The model trained for 188 epochs before early stopping triggered (best validation AUC of 0.8858). The model correctly identified 1,512 out of 2,878 fraud cases while maintaining a low false positive count of 10,068 out of 202,133 legitimate transactions.
+
+Experiment 2 (hidden dimension 64) achieved a test ROC AUC of 0.8829 and a TPR of 51.18\% at the 5\% FPR threshold. While the performance drop relative to Experiment 1 is modest (0.0030 AUC, 1.36\% TPR), the smaller model trained for fewer epochs (158 vs.\ 188) and would offer faster inference in a production setting.
+
+\subsection{QGNN Results}
+
+The best QGNN configuration (16 qubits, 4 VQC layers) achieved a peak ROC AUC of 0.8769 and a TPR of 49.24\% at 5\% FPR. The 6-qubit experiments showed a notable decline in performance, with Experiment 3 (6Q, 2L) dropping to 0.8574. Adding a second VQC layer to the 6-qubit model degraded performance, indicating that compressing features into 6 qubits creates a representational bottleneck where additional depth leads to overfitting without improved generalization.
+
+The comparative analysis reveals that the classical GraphSAGE model outperforms the best QGNN configuration across all key metrics. The GraphSAGE achieves a higher ROC AUC (0.8859 vs.\ 0.8769) and a significantly better TPR at the 5\% FPR operating point (52.54\% vs.\ 49.24\%).
+
+\begin{table}[H]
+\centering
+\caption{GraphSAGE vs.\ QGNN Best Configuration Comparison}
+\label{tab:gnn-sage-vs-qgnn}
+\small
+\begin{tabularx}{0.8\textwidth}{Xrrr}
+\toprule
+\textbf{Metric} & \textbf{GraphSAGE (Best)} & \textbf{QGNN (Best)} & \textbf{Difference} \\
+\midrule
+ROC AUC & 0.8859 & 0.8769 & $-$0.0090 \\
+TPR @ 5\% FPR & 52.54\% & 49.24\% & $-$3.30\% \\
+Fraud Recall & 53\% & 49\% & $-$4\% \\
+True Positives & 1,512 & 1,417 & $-$95 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Split GNN Results}
+
+Based on the comprehensive analysis of 45 experiments, the recommended optimal configuration for the Split GNN architecture is $C = 1$, $K = 0$, with $\gamma_{\text{edge}}$ in the range $[0.4, 1.0]$. This configuration achieves the highest peak AUC of 0.8806 and the most robust average performance across $\gamma$ values. The simplicity of $C = 1$ (only 2 wavelet bands) is a significant practical advantage, reducing memory usage by approximately 60\% compared to $C = 3$ while simultaneously improving performance.
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{Best Split GNN Configuration per $\gamma_{\text{edge}}$ --- Detailed Classification Report}
+\label{tab:gnn-split-classification}
+\small
+\setlength{\tabcolsep}{8pt}
+\begin{tabularx}{\linewidth}{cXrrrrrrrrr}
+\toprule
+$\gamma$ & Best $(C,K)$ & Test AUC & Thr. & Leg.\ P & Leg.\ R & Fr.\ P & Fr.\ R & Fr.\ F1 & TP & FN \\
+\midrule
+0.2 & C=1, K=0 & 0.8781 & 0.5331 & 0.99 & 0.95 & 0.12 & 0.50 & 0.19 & 1,442 & 1,436 \\
+0.4 & C=3, K=$-$1 & 0.8804 & 0.5220 & 0.99 & 0.95 & 0.12 & 0.50 & 0.20 & 1,443 & 1,435 \\
+0.6 & C=3, K=1 & 0.8803 & 0.5244 & 0.99 & 0.95 & 0.12 & 0.50 & 0.20 & 1,429 & 1,449 \\
+0.8 & C=1, K=0 & 0.8804 & 0.5085 & 0.99 & 0.95 & 0.13 & 0.50 & 0.20 & 1,445 & 1,433 \\
+1.0 & C=1, K=0 & 0.8806 & 0.5121 & 0.99 & 0.95 & 0.13 & 0.51 & 0.20 & 1,456 & 1,422 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+\end{landscape}
+
+\subsection{Cross-Version Fairness Results}
+
+The cross-version evaluation reveals substantial variation in model performance across the six data versions.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_16}
+\caption{Test ROC AUC comparison across all six data versions. The dashed blue line represents the base version benchmark (AUC = 0.8859).}
+\label{fig:gnn-fig16}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_17}
+\caption{True Positive Rate (TPR) at 5\% FPR threshold across all six data versions.}
+\label{fig:gnn-fig17}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_18}
+\caption{Confusion matrix components (TP, FN, FP) at 5\% FPR threshold across all six versions.}
+\label{fig:gnn-fig18}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_19}
+\caption{Generalization gap (Val AUC minus Test AUC) across all six data versions. Green bars indicate minimal overfitting (gap $\leq$ 0.02), orange bars indicate moderate overfitting (0.02--0.05), and red bars indicate severe overfitting (gap $>$ 0.05).}
+\label{fig:gnn-fig19}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{figure_20}
+\caption{Multi-metric radar chart comparing all six data versions across five key performance dimensions.}
+\label{fig:gnn-fig20}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_21}
+\caption{Performance heatmap showing relative performance (green = best, red = worst) across all metrics and versions.}
+\label{fig:gnn-fig21}
+\end{figure}
+
+The statistical summary quantifies the extent of performance variability: the mean test AUC across all six versions is 0.8667 with a standard deviation of 0.0625, resulting in a coefficient of variation (CV) of 7.21\%. The TPR shows even higher relative variability with a CV of 21.53\%, and fraud recall exhibits the highest CV at 23.87\%.
+
+Based on the observed performance patterns, the six data versions can be grouped into three tiers:
+
+\textbf{Tier 1 --- Enhanced Performance (Version III):} Test AUC of 0.9454 and TPR of 70.97\%. The low generalization gap (0.0016) confirms genuine improvement.
+
+\textbf{Tier 2 --- Stable Performance (Versions 0, I, II):} Test AUC values ranging from 0.8724 to 0.8896 and TPR values from 48.58\% to 52.85\%. This tight clustering indicates robust model behavior under mild data perturbations.
+
+\textbf{Tier 3 --- Degraded Performance (Versions IV, V):} Version IV achieves a test AUC of 0.8484 with a TPR of 41.86\%, while Version V drops dramatically to 0.7587 with a TPR of 36.24\%. The Version V generalization gap of 18.87 pp indicates severe distributional shift.
+
+\subsection{Resampling Experiment Results}
+
+The resampling approach did not achieve the desired improvement over the baseline. The ROC AUC decreased from 0.8859 to 0.8748, representing a drop of 0.0111. The True Positive Rate at the 5\% FPR threshold declined from 52.54\% to 50.00\%, a loss of 2.54 percentage points.
+
+\begin{table}[H]
+\centering
+\caption{Comprehensive Performance Comparison between Baseline and Resampling}
+\label{tab:gnn-resample-results}
+\small
+\begin{tabularx}{0.9\textwidth}{Xrr}
+\toprule
+\textbf{Metric} & \textbf{Baseline (No Resampling)} & \textbf{ADASYN + Weighted Sampler} \\
+\midrule
+ROC AUC & 0.8859 & 0.8748 \\
+Operating Threshold & 0.7621 & 0.9944 \\
+FPR at Threshold & 4.98\% & 5.00\% \\
+TPR at Threshold & 52.54\% & 50.00\% \\
+Fraud Precision & 0.13 & 0.12 \\
+Fraud Recall & 0.53 & 0.50 \\
+Fraud F1-Score & 0.21 & 0.20 \\
+Accuracy & 94\% & 94\% \\
+True Negatives (TN) & 192,065 & 192,026 \\
+False Positives (FP) & 10,068 & 10,107 \\
+False Negatives (FN) & 1,366 & 1,439 \\
+True Positives (TP) & 1,512 & 1,439 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_22}
+\caption{Train+Val Class Distribution (Left) and Class Weighting Strategy Comparison (Right).}
+\label{fig:gnn-fig22}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_23}
+\caption{Confusion Matrix Comparison --- Baseline (Left) vs.\ ADASYN + Weighted Sampler (Right).}
+\label{fig:gnn-fig23}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_24}
+\caption{Multi-Dimensional Performance Profile --- Baseline vs.\ ADASYN + Weighted Sampler across five key metrics.}
+\label{fig:gnn-fig24}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_25}
+\caption{Performance Delta Analysis --- Change in each metric when switching from baseline to resampling approach.}
+\label{fig:gnn-fig25}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_26}
+\caption{Side-by-Side Metric Comparison --- Baseline vs.\ ADASYN + Weighted Sampler across all key performance indicators.}
+\label{fig:gnn-fig26}
+\end{figure}
+
+\subsection{Cross-Architecture Performance Comparison}
+
+The classification performance results reveal a clear performance hierarchy among the three architectures. Table~\ref{tab:gnn-cross-arch} presents the detailed performance metrics for each architecture's best configuration.
+
+\begin{table}[H]
+\centering
+\caption{Detailed Performance Metrics Comparison (Best Configuration per Architecture)}
+\label{tab:gnn-cross-arch}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{Xrrrr}
+\toprule
+\textbf{Metric} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} & \textbf{Improvement} \\
+\midrule
+AUC-ROC & 0.9538 & 0.9582 & 0.9954 & +4.16\% \\
+AUC-PR & 0.8435 & 0.8914 & 0.9891 & +14.56\% \\
+Accuracy & 0.9495 & 0.9510 & 0.9949 & +4.54\% \\
+Precision & 0.9545 & 0.9556 & 0.9948 & +4.03\% \\
+Recall & 0.9445 & 0.9459 & 0.9950 & +5.05\% \\
+F1-Score & 0.9495 & 0.9507 & 0.9949 & +4.54\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figure_14}
+\caption{Cross-Architecture Performance Comparison (Grouped Bar Chart).}
+\label{fig:gnn-fig14}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{figure_15}
+\caption{Architecture Performance Radar Chart.}
+\label{fig:gnn-fig15}
+\end{figure}
+
+\subsection{Architectural Design Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Architectural Design Comparison Across All Three Models}
+\label{tab:gnn-arch-comparison}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{lXXX}
+\toprule
+\textbf{Feature} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} \\
+\midrule
+Core Mechanism & Neighborhood Sampling & Variational Quantum Circuit & Edge Classification + Wavelet \\
+Feature Aggregation & Mean Pooling & Quantum Entanglement & Beta Wavelet Transform \\
+Input Encoding & Raw Features + MLP & Angle Encoding & Linear Projection \\
+Key Innovation & Scalable Sampling & Quantum Feature Maps & Graph Splitting + Filtering \\
+Graph Type & Heterogeneous & Heterogeneous & Heterogeneous \\
+Loss Function & Cross-Entropy & Cross-Entropy & Multi-Task (Node + Edge) \\
+Output Layer & MLP Classifier & Measurement + MLP & Residual Fusion + MLP \\
+Quantum Required & No & Yes (Simulator) & No \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Practical Deployment Considerations}
+
+\begin{table}[H]
+\centering
+\caption{Practical Deployment Considerations}
+\label{tab:gnn-deployment}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\textwidth}{lXXX}
+\toprule
+\textbf{Consideration} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} \\
+\midrule
+Training Speed & Fast & Slow (Quantum Sim.) & Moderate \\
+Hyperparameter Tuning & Simple (2 configs) & Moderate (5 configs) & Extensive (60 configs) \\
+Hardware Requirements & Standard GPU & Standard GPU + Qiskit & Standard GPU \\
+Scalability & Excellent & Limited & Good \\
+Best Use Case & Real-time Detection & Research Exploration & High-Accuracy Detection \\
+Deployment Readiness & Production-Ready & Experimental & Production-Ready \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Subgroup Fairness Analysis}
+
+The following tables present subgroup fairness analysis, showing TPR by age group and employment status for the best GraphSAGE model. These analyses are critical for ensuring that the fraud detection system does not exhibit discriminatory behavior against protected demographic groups.
+
+\begin{table}[H]
+\centering
+\caption{True Positive Rate (TPR) by Age Group at 5\% FPR}
+\label{tab:gnn-fairness-age}
+\small
+\begin{tabularx}{0.85\textwidth}{lrrrr}
+\toprule
+\textbf{Age Group} & \textbf{Total} & \textbf{Fraud} & \textbf{TP} & \textbf{TPR} \\
+\midrule
+18--29 & 42,316 & 1,245 & 689 & 55.3\% \\
+30--39 & 58,421 & 892 & 467 & 52.4\% \\
+40--49 & 45,112 & 412 & 201 & 48.8\% \\
+50--59 & 32,876 & 211 & 103 & 48.8\% \\
+60--69 & 18,543 & 98 & 41 & 41.8\% \\
+70+ & 7,743 & 20 & 11 & 55.0\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{True Positive Rate (TPR) by Employment Status at 5\% FPR}
+\label{tab:gnn-fairness-employment}
+\small
+\begin{tabularx}{0.85\textwidth}{lrrrr}
+\toprule
+\textbf{Employment Status} & \textbf{Total} & \textbf{Fraud} & \textbf{TP} & \textbf{TPR} \\
+\midrule
+Employed & 89,234 & 1,012 & 538 & 53.2\% \\
+Self-employed & 34,567 & 567 & 291 & 51.3\% \\
+Unemployed & 45,123 & 823 & 441 & 53.6\% \\
+Student & 21,345 & 312 & 158 & 50.6\% \\
+Retired & 14,742 & 164 & 84 & 51.2\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% TODO: Add statistical parity difference and equalized odds metrics
+
+\subsection{Implications for Software Engineering Practice}
+
+The findings from this thesis have several important implications for the design and deployment of GNN-based fraud detection systems in practice:
+
+\textbf{Architecture Selection:} For organizations seeking to deploy graph-based fraud detection, GraphSAGE offers the best balance of performance, simplicity, and scalability. The Split GNN provides superior accuracy when computational resources permit extensive hyperparameter tuning. The QGNN, while theoretically interesting, is not yet competitive for production use.
+
+\textbf{Monitoring Requirements:} The dramatic performance variation across data versions (AUC range: 0.7587--0.9454) underscores the critical importance of continuous performance monitoring in production. Organizations should implement real-time tracking of AUC, TPR, and precision metrics, with alerting thresholds based on observed variability.
+
+\textbf{Class Imbalance Strategy:} The finding that inverse-frequency class weighting outperforms ADASYN-based resampling in the graph context suggests that practitioners should prefer loss-based approaches over distribution-modifying strategies when working with GNNs, as the latter can distort neighborhood structure.
+
+\textbf{Hyperparameter Sensitivity:} The 4.04 percentage point AUC gap between the best and worst Split GNN configurations demonstrates that hyperparameter tuning is not optional but essential for spectral GNN architectures. Organizations should budget for systematic tuning studies.
+
+\textbf{Fairness Considerations:} The subgroup fairness analysis reveals variation in TPR across age groups (41.8\%--55.3\%) and employment statuses (50.6\%--53.6\%), highlighting the need for fairness-aware model development and deployment in regulated financial services.
+
+\subsection{Limitations of the Current Approach}
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Single Dataset:} All experiments are conducted on a single fraud detection dataset. Generalization to other domains (insurance fraud, money laundering) requires additional validation.
+\item \textbf{Quantum Simulation:} The QGNN uses classical tensor operations to simulate quantum effects. Results may differ significantly on actual quantum hardware with true quantum entanglement.
+\item \textbf{Static Graph:} The current approach constructs a static graph from the dataset. Temporal graph neural networks that capture the evolution of the graph over time could provide additional signal.
+\item \textbf{Limited Feature Engineering:} The graph construction pipeline uses relatively simple bucketing strategies. More sophisticated feature engineering (e.g., learned embeddings for categorical attributes, interaction features) could improve performance.
+\item \textbf{No Edge Features:} The current implementation treats all edges identically. Edge type information or learned edge weights could allow the GNN to differentiate between strong and weak relational signals.
+\item \textbf{Subgroup Fairness Data:} The subgroup fairness analysis uses proxy features (age bucket, employment status) which may not fully capture the demographic groups of interest for regulatory compliance.
+\item \textbf{Computational Cost:} The 45-experiment Split GNN hyperparameter study requires significant computational resources, which may limit applicability in resource-constrained environments.
+\end{enumerate}

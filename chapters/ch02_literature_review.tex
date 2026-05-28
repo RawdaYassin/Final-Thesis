@@ -1,0 +1,1296 @@
+% CHAPTER 2: LITERATURE REVIEW
+\chapter{Literature Review}
+\label{ch:litreview}
+
+This chapter provides a comprehensive survey of the literature relevant to
+financial fraud detection using multi-paradigm deep learning. We begin by
+establishing the domain background, including the nature of financial fraud, the
+characteristics of benchmark datasets, and the fairness considerations that
+motivate responsible model design. We then review the state-of-the-art in
+software solutions and frameworks that support fraud detection research. The
+core of the chapter presents a detailed survey of approaches, spanning
+traditional rule-based systems, classical machine learning, graph neural
+networks, spiking neural networks, and autoencoder-based methods. For each
+paradigm, we examine the foundational theories, architectural innovations, and
+empirical findings with specific attention to performance on the Bank Account
+Fraud (BAF) benchmark suite. Finally, we identify five critical research gaps
+that this thesis addresses, demonstrating the need for a unified multi-paradigm
+comparison under controlled experimental conditions and providing a roadmap for
+the contributions that follow in subsequent chapters.
+
+\section{Domain Background}
+
+Financial fraud constitutes one of the most pervasive and economically damaging
+categories of cybercrime in the modern digital economy. The scope of financial
+fraud is vast, encompassing credit card fraud, identity theft, insurance fraud,
+money laundering, and securities manipulation, among other illicit activities.
+In the context of credit card fraud alone, global losses exceed \$30 billion
+annually, a figure that continues to grow as digital payment systems proliferate
+and fraudsters adopt increasingly sophisticated
+techniques~\cite{singh2024comprehensive}. Credit card application fraud---the
+specific focus of this thesis---occurs when criminals submit applications using
+stolen or synthetic identities to obtain credit facilities, which are then
+exploited for immediate financial gain before the fraud is detected. The
+economic impact of application fraud is particularly severe because each
+successful fraudulent application can result in losses ranging from thousands to
+tens of thousands of dollars, and organized fraud rings may submit hundreds of
+coordinated applications simultaneously~\cite{jesus2022bank}.
+
+The challenge of detecting financial fraud is compounded by several interrelated
+factors that distinguish it from conventional classification problems. First,
+the extremely low base rate of fraud means that even highly accurate classifiers
+can produce an overwhelming number of false positives when deployed at scale,
+overwhelming human investigators and eroding confidence in the detection system.
+Second, fraud patterns are inherently adversarial: as detection systems evolve,
+fraudsters adapt their strategies to circumvent new defenses, creating a
+continuous arms race between attackers and defenders that renders static models
+obsolete over time. Third, the cost asymmetry between false positives and false
+negatives is severe: false positives inconvenience legitimate customers and
+erode institutional trust, while false negatives result in direct financial
+losses that may be irreversible once the fraudulent activity is discovered.
+Fourth, the temporal nature of financial data introduces distributional shift,
+as the statistical properties of both legitimate and fraudulent applications
+evolve over time due to changes in customer behavior, economic conditions, and
+fraudster tactics. These factors collectively make fraud detection one of the
+most challenging problems in applied machine learning~\cite{alenzi2020fraud}.
+
+The detection of credit card application fraud presents unique challenges even
+within the broader domain of financial fraud detection. Unlike transaction-level
+fraud, where each transaction can be evaluated in the context of a known
+customer's historical behavior, application fraud involves making decisions
+about previously unknown entities with limited historical data. The absence of a
+behavioral baseline for new applicants means that detection must rely on the
+intrinsic properties of the application itself and its relationships to other
+applications and entities. This relational aspect---the fact that fraudulent
+applications often share devices, IP addresses, email domains, and other
+attributes with other fraudulent applications---is the key insight that
+motivates graph-based approaches to fraud detection, which we explore in detail
+in Section~\ref{ch:litreview}.
+
+\subsection{The Bank Account Fraud Dataset Suite}
+
+The Bank Account Fraud (BAF) dataset suite~\cite{feedzai2022baf} has emerged as
+the primary benchmark for evaluating fraud detection methods under realistic and
+challenging conditions. Developed by Feedzai and released in 2022, the BAF suite
+was designed to address the limitations of earlier fraud detection benchmarks,
+which often used synthetic data, lacked temporal structure, or failed to
+represent the extreme class imbalance characteristic of real-world fraud
+detection. The base version of the dataset contains approximately one million
+application instances, with a fraud prevalence of 1.10\%, yielding a class
+imbalance ratio of approximately 89:1. This extreme imbalance is representative
+of real-world fraud detection scenarios and poses significant challenges for
+standard classification algorithms that assume balanced class distributions. The
+BAF dataset is derived from real-world credit card application data that has
+been anonymized and preprocessed to protect sensitive information while
+preserving the statistical properties relevant to fraud detection research.
+
+A critical feature of the BAF dataset is its temporal structure, which is
+essential for realistic evaluation of fraud detection models. The data is
+partitioned into training (months 0--4), validation (month 5), and test (months
+6--7) splits, reflecting the temporal reality of fraud detection deployments
+where models must generalize to future data that may exhibit distributional
+shift. This temporal split design stands in sharp contrast to the random
+stratified splits commonly used in machine learning research, which tend to
+overestimate model performance by allowing information leakage between
+temporally adjacent observations~\cite{sun2025objective}. The temporal
+separation ensures that models are evaluated on their ability to detect fraud
+patterns that may have shifted from the training period, a scenario that is
+practically inevitable given the adversarial evolution of fraud strategies and
+the natural drift in customer application patterns over time.
+
+The BAF suite comprises six distinct versions, each designed to test a specific
+challenge relevant to real-world fraud detection. The \textbf{Base} version
+provides the standard evaluation setting with the full feature set and natural
+class distribution, serving as the primary benchmark for comparing detection
+methods. \textbf{Variant~I} (Group Size Disparity) introduces significant
+differences in the number of applications across demographic groups, testing
+fairness under population imbalance and challenging models to maintain equitable
+performance when some groups are severely underrepresented. \textbf{Variant~II}
+(Prevalence Disparity) manipulates the fraud rate across demographic groups,
+creating a scenario where the base rate differs substantially across protected
+attributes and directly testing the Chouldechova impossibility
+result~\cite{chouldechova2017fair}. \textbf{Variant~III} (Prevalence Shift)
+introduces a temporal shift in the overall fraud rate between training and test
+periods, challenging models to adapt to changing class priors without
+retraining. \textbf{Variant~IV} (Temporal Prevalence Shift) combines temporal
+drift with group-specific prevalence changes, representing the most realistic
+and challenging scenario where both the overall and group-conditional fraud
+rates evolve over time. \textbf{Variant~V} (Temporal Separability Shift)
+introduces a temporal shift in the separability of legitimate and fraudulent
+applications, testing whether models can maintain detection performance when the
+feature distributions of the two classes become more similar over time---a
+particularly challenging form of distributional shift that reduces the signal
+available for discrimination. This comprehensive suite of variants enables
+systematic investigation of model behavior under a range of realistic
+distributional challenges that are rarely addressed in the fraud detection
+literature.
+
+The BAF dataset features comprise 30 attributes, which can be decomposed into 17
+continuous or numerical features, 5 categorical features, and 13 binary flags or
+indicator variables. The continuous features capture quantitative application
+properties such as income, credit history metrics, and application timing, and
+require appropriate normalization or scaling before use in neural network
+architectures. The categorical features encode discrete attributes such as
+employment status and housing type, and must be encoded through techniques such
+as one-hot encoding or embedding layers to be processed by deep learning models.
+The binary flags indicate the presence or absence of specific risk indicators,
+and their sparse, high-dimensional nature presents challenges for models that
+assume dense feature representations. This heterogeneous feature space presents
+challenges for models that assume homogeneous input distributions, motivating
+the exploration of architectures capable of processing mixed data types
+effectively. The combination of continuous, categorical, and binary features in
+a single dataset reflects the complexity of real-world financial data and makes
+the BAF suite a particularly demanding benchmark for deep learning methods that
+are typically optimized for homogeneous input types.
+
+\subsection{Fairness Considerations in Fraud Detection}
+
+The deployment of fraud detection systems raises important fairness concerns, as
+models may exhibit disparate performance across demographic groups defined by
+protected attributes such as age, gender, or ethnicity.
+Chouldechova~\cite{chouldechova2017fair} demonstrated the impossibility of
+simultaneously achieving equalized odds (equal true positive and false positive
+rates across groups) and calibration (predictive parity) when base rates differ
+across groups, a condition that is virtually guaranteed in fraud detection due
+to the varying prevalence of fraud across demographic segments. This
+impossibility result has profound implications: any fraud detection system will
+necessarily exhibit some form of unfairness, and the choice of which fairness
+metric to optimize involves normative judgments about the relative costs of
+different types of errors across groups. The practical consequence is that fraud
+detection system designers must make explicit trade-offs between different
+fairness criteria, and these trade-offs should be informed by domain-specific
+considerations about the relative harms of different error types.
+
+Empirical studies on the BAF dataset have revealed true positive rate (TPR) gaps
+of up to 5.5 percentage points across age groups, indicating that certain
+demographic segments are systematically less well-served by standard fraud
+detection models~\cite{kozodoi2022fairness}. These disparities persist even when
+models are trained without explicit access to protected attributes, as proxy
+features correlated with group membership can encode discriminatory patterns
+that the model learns to exploit. The persistence of fairness disparities in
+nominally ``blind'' models underscores the difficulty of achieving equitable
+outcomes through data omission alone and motivates the development of fairness-
+aware training methods that explicitly constrain model behavior across
+demographic groups. Dai et al.~\cite{dai2021fair} have proposed fairness-aware
+training objectives for graph-based fraud detection, demonstrating that it is
+possible to reduce TPR disparities without substantial degradation in overall
+detection performance. However, the interplay between fairness constraints and
+the architectural innovations explored in this thesis---including graph neural
+networks, spiking neural networks, and autoencoder-based methods---remains
+largely unexplored. The tension between detection performance and fairness
+underscores the need for multi-metric evaluation frameworks that go beyond
+aggregate AUC to assess model behavior across demographic subgroups, a principle
+that guides the evaluation methodology of this thesis.
+
+\section{State-of-the-Art in Software Solutions}
+
+Modern financial fraud detection systems increasingly incorporate advanced
+analytics alongside traditional tabular processing methods, driven by the
+recognition that fraud patterns exploit relational structures that are invisible
+to feature-based classifiers. Commercial platforms such as Featurespace,
+ThetaRay, and DataVisor have developed proprietary systems that leverage network
+analysis and unsupervised anomaly detection for real-time fraud screening,
+though the specific algorithms and architectures employed are often not publicly
+disclosed. The commercial landscape reflects a growing consensus that single-
+paradigm approaches are insufficient for the complexity of modern fraud, and
+that effective detection requires the integration of multiple analytical
+perspectives. In the academic and open-source domain, several notable frameworks
+and benchmarks have emerged that facilitate reproducible fraud detection
+research and enable systematic comparison of competing approaches.
+
+The IEEE CIS Fraud Detection competition hosted on Kaggle popularized the use of
+rich tabular features for fraud detection, generating a large corpus of
+comparative studies on gradient-boosted methods and establishing important
+baselines for the field. However, the competition dataset lacked explicit
+relational structure, limiting the exploration of graph-based approaches and
+focusing research attention on feature engineering and ensemble methods for
+tabular data. More recently, graph-based benchmarks such as the Anti-Money
+Laundering (AML) dataset and the BAF suite~\cite{feedzai2022baf} have provided
+transaction-level data with entity relationships, enabling the systematic
+evaluation of graph-based methods. Arulkumaran et
+al.~\cite{arulkumaran2022bankguard} proposed BankGuard, a framework integrating
+graph analytics with traditional fraud detection pipelines, demonstrating the
+practical value of combining relational and feature-based reasoning in
+production systems and providing a template for the multi-pipeline architecture
+explored in this thesis.
+
+For graph neural network research, PyTorch Geometric (PyG) provides efficient
+implementations of various GNN layers including SAGEConv, GATConv, and general
+message-passing abstractions that support custom aggregation schemes and
+heterogeneous graph processing. The Deep Graph Library (DGL) offers an
+alternative framework with native support for heterogeneous graphs, which is
+particularly relevant for financial fraud detection where nodes of different
+types (applicants, devices, IP addresses) interact through typed edges. For
+quantum machine learning, PennyLane and Qiskit provide simulators for
+variational quantum circuits that can be integrated with classical neural
+network components, enabling research on quantum-inspired architectures without
+requiring quantum hardware. For spiking neural networks, frameworks such as
+Norse and snnTorch~\cite{eshraghian2021training} provide differentiable Leaky
+Integrate-and-Fire (LIF) neuron implementations compatible with PyTorch,
+enabling gradient-based training through surrogate gradient methods and
+providing the computational infrastructure upon which the SNN pipeline of this
+thesis is built. For autoencoder-based anomaly detection, PyTorch and TensorFlow
+provide flexible architectures for building VAEs and DAEs, while
+XGBoost~\cite{chen2016xgboost} and LightGBM~\cite{ke2017lightgbm} offer
+efficient gradient-boosted decision tree implementations that serve as meta-
+learners for score-level stacking in hybrid detection pipelines. The
+availability of these mature, well-documented frameworks has substantially
+lowered the barrier to entry for multi-paradigm fraud detection research and
+enables the systematic comparison conducted in this thesis.
+
+\section{Survey of Approaches}
+
+This section presents a detailed survey of approaches to financial fraud
+detection, organized by paradigm. We progress from traditional rule-based
+systems through classical machine learning to the three deep learning paradigms
+central to this thesis: graph neural networks, spiking neural networks, and
+autoencoder-based methods. For each paradigm, we review the foundational
+methods, recent advances, and specific applications to financial fraud
+detection, with emphasis on performance characteristics on the BAF dataset where
+available. This progressive organization reflects the historical development of
+the field while establishing the context for the multi-paradigm comparison that
+is the central contribution of this thesis.
+
+\subsection{Traditional and Rule-Based Approaches}
+
+Traditional fraud detection systems rely on expert-defined rules, heuristic
+thresholds, and pattern-matching techniques to identify suspicious applications.
+These systems operate by encoding domain knowledge into explicit decision
+criteria, such as flagging applications originating from high-risk geographic
+regions, those submitted within unusual time windows, or those associated with
+known fraudulent devices. Rule-based systems offer several practical advantages
+that have sustained their use in the financial industry for decades: they are
+fully interpretable, allowing compliance officers and regulators to understand
+exactly why an application was flagged; they can be rapidly deployed and
+modified in response to emerging fraud patterns without requiring retraining;
+and they require no training data, making them immediately applicable in cold-
+start scenarios where historical fraud data is
+unavailable~\cite{alenzi2020fraud}. In the early days of digital banking, rule-
+based systems formed the backbone of fraud detection infrastructure and continue
+to serve as a first line of defense in many financial institutions, particularly
+for detecting obvious fraud patterns that conform to known templates.
+
+However, rule-based approaches suffer from fundamental limitations that
+constrain their effectiveness in modern fraud detection environments. First,
+they are inherently reactive, as rules must be crafted in response to previously
+observed fraud patterns, leaving them vulnerable to novel attack strategies that
+do not match existing rule templates. Sophisticated fraud rings deliberately
+vary their tactics to avoid triggering known rules, employing techniques such as
+device rotation, geographic distribution, and temporal spacing to evade
+detection. Second, the maintenance burden grows combinatorially as the number of
+rules increases, leading to rule conflicts, redundancy, and inconsistency that
+are difficult to diagnose and resolve. Large financial institutions may maintain
+thousands of fraud detection rules, many of which interact in complex and
+unpredictable ways. Third, rule-based systems lack the statistical rigor to
+handle the probabilistic nature of fraud signals, often producing binary
+decisions that fail to account for the uncertainty inherent in fraud assessment.
+A rule that flags all applications from a particular IP range, for example,
+makes no distinction between high-confidence and low-confidence signals within
+that range. Fourth, sophisticated fraudsters can systematically probe and
+circumvent rule-based defenses through trial-and-error attacks, as the
+deterministic nature of rules makes them predictable once their logic is
+inferred. These limitations have motivated the transition toward data-driven
+machine learning approaches that can learn complex, non-linear decision
+boundaries from historical data while maintaining the flexibility to adapt to
+evolving fraud patterns.
+
+Despite their limitations, rule-based systems continue to play a complementary
+role in modern fraud detection architectures. Hybrid systems that combine rule-
+based pre-screening with machine learning scoring can leverage the strengths of
+both approaches: rules provide fast, interpretable filtering for obvious cases,
+while machine learning models handle the ambiguous cases that require nuanced
+statistical reasoning. This hybrid philosophy extends to the multi-paradigm
+approach explored in this thesis, where different models may be deployed in
+different stages of a detection pipeline, each contributing its unique strengths
+to the overall detection capability. The persistence of rule-based systems in
+production environments also serves as a reminder that practical fraud detection
+requires not only statistical power but also interpretability, maintainability,
+and regulatory compliance---considerations that influence the design choices of
+all paradigms examined in this thesis.
+
+\subsection{Classical Machine Learning Approaches}
+
+Classical machine learning methods---including logistic regression, decision
+trees, random forests, and gradient-boosted models---have been the workhorses of
+fraud detection for over two decades. These methods operate on tabular feature
+representations of individual applications, treating each application as an
+independent observation and learning decision boundaries that separate
+legitimate from fraudulent instances based on feature values. The extensive
+literature on classical approaches provides important baselines and insights
+that inform the design of more sophisticated deep learning methods, and the
+performance of classical models on the BAF dataset establishes the benchmark
+against which the deep learning paradigms explored in this thesis must be
+measured. The enduring popularity of classical methods in production fraud
+detection systems reflects their robustness, interpretability, and strong
+performance on tabular data, properties that have been extensively documented in
+the machine learning literature~\cite{grinsztajn2022tree}.
+
+\subsubsection{Performance of Classical Models on BAF}
+
+Ahmed and Shamsuddin~\cite{ahmed2022comparative} conducted a comparative study
+of classical classifiers on the BAF dataset, reporting accuracy values of
+87.91\% for logistic regression, 90.78\% for random forest, and 97.17\% for
+decision trees. While these accuracy figures appear impressive at first glance,
+they are profoundly misleading due to the extreme class imbalance: a naive
+classifier that labels all instances as legitimate would achieve approximately
+98.9\% accuracy on the BAF base dataset, rendering accuracy an inappropriate and
+deceptive metric for fraud detection evaluation. The high accuracy of the
+decision tree in particular reflects overfitting to the majority class rather
+than genuine fraud detection capability, as the tree learns to predict the
+majority class for most leaf nodes while creating deep, spurious branches that
+memorize noise in the minority class. This observation underscores the critical
+importance of using class-sensitive metrics such as area under the receiver
+operating characteristic curve (AUC), true positive rate at fixed false positive
+rate (TPR@FPR), and precision-recall curves when evaluating fraud detection
+models, a principle that is consistently applied throughout this thesis.
+
+Islam et al.~\cite{islam2023effects} provided a more nuanced evaluation of
+classical methods, reporting that gradient-boosted models (GBM) achieve an AUC
+of 0.98 on the BAF dataset, but with a true positive rate below 50\% at
+operationally relevant false positive rates. This striking disparity between AUC
+and TPR highlights a crucial practical consideration: while the AUC summarizes
+detection performance across all possible decision thresholds, operational fraud
+detection systems must operate at very low false positive rates (typically 1--
+5\%) to avoid overwhelming human investigators with false alerts and degrading
+the customer experience for legitimate applicants. At these low FPR operating
+points, the detection rate of even the best classical models can be alarmingly
+low, leaving a substantial proportion of fraudulent applications undetected.
+This finding motivates the exploration of deep learning approaches that may
+capture more discriminative patterns, particularly relational patterns that are
+invisible to tabular classifiers.
+
+Dong~\cite{dong2025enhanced} further demonstrated the limitations of classical
+approaches in a comprehensive evaluation, showing that a random forest model
+achieving 98.93\% accuracy on a fraud detection task obtained a fraud recall of
+only 0.16\%, meaning that the model detected fewer than 2 in 1,000 fraudulent
+applications. This catastrophic failure at the minority class illustrates the
+fundamental challenge of class imbalance for classical methods and the
+inadequacy of accuracy as an evaluation metric. The results of Dong's study also
+highlighted that tree-based ensembles, while generally more robust to imbalance
+than single decision trees due to their bagging and boosting mechanisms, still
+require explicit imbalance handling strategies to achieve acceptable fraud
+detection rates. The consistent pattern across these studies---high accuracy
+masking catastrophic minority-class performance---underscores the need for both
+improved evaluation methodology and more powerful detection architectures.
+
+\subsubsection{Class Imbalance Handling Strategies}
+
+The extreme class imbalance characteristic of fraud detection datasets has
+motivated the development and application of various resampling and loss-
+modification strategies, each with distinct mechanisms and trade-offs. The most
+widely used resampling methods include SMOTE~\cite{chawla2002smote}, which
+generates synthetic minority class examples by interpolating between existing
+minority instances and their nearest neighbors in feature space, and
+ADASYN~\cite{he2008adasyn}, which adaptively focuses synthetic sample generation
+on harder-to-learn minority instances based on their local class distribution.
+Loss-based approaches include class weighting~\cite{byrd2019effect}, which
+assigns higher misclassification costs to minority class examples to shift the
+decision boundary toward better minority-class coverage, and focal
+loss~\cite{lin2017focal}, which dynamically down-weights the loss contribution
+of well-classified easy examples to focus training on hard, misclassified
+instances that are typically concentrated near the decision boundary. Each of
+these strategies modifies the effective training distribution in different ways,
+and their interaction with different model architectures is an active area of
+research.
+
+Uwaoma~\cite{uwaoma2024detecting} conducted a systematic evaluation of five
+sampling strategies (SMOTE, ADASYN, random oversampling, random undersampling,
+and no sampling) across four model architectures on the BAF dataset, providing
+the most comprehensive assessment of imbalance handling strategies for this
+benchmark to date. The study revealed that the effectiveness of resampling
+strategies is highly architecture-dependent: while resampling can improve the
+performance of classical models by providing a more balanced training signal, it
+can paradoxically degrade the performance of graph-based methods. Specifically,
+ADASYN was found to reduce GraphSAGE AUC from 0.8859 to 0.8748, a
+counterintuitive result that highlights the tension between modifying the label
+distribution and preserving the relational structure upon which GNNs depend.
+When synthetic minority instances are added to the training set, they are
+assigned feature vectors that may not correspond to realistic nodes in the
+graph, creating artificial neighborhoods that distort the topology and confuse
+the message-passing mechanism. This ``resampling paradox'' has significant
+implications for the design of multi-paradigm systems, as a preprocessing
+strategy that benefits one model type may actively harm another.
+
+Farahat et al.~\cite{farahat2025objective} extended the analysis of imbalance
+handling by proposing objective-aware evaluation frameworks that explicitly
+account for the operational cost structure of fraud detection, arguing that
+standard metrics such as AUC fail to capture the asymmetric costs of false
+positives and false negatives in deployment scenarios. Their work motivates the
+use of cost-sensitive evaluation metrics such as TPR@5\%FPR, which directly
+measures the detection rate at an operationally acceptable false positive rate,
+providing a more realistic assessment of model utility. Parkar et
+al.~\cite{parkar2024comparative} provided a broader comparative analysis of
+preprocessing strategies for fraud detection, confirming that no single
+resampling strategy consistently outperforms others across all model
+architectures and evaluation metrics, further emphasizing the need for paradigm-
+specific tuning and the careful selection of imbalance handling strategies based
+on the model architecture and evaluation criteria.
+
+\subsection{Graph Neural Network Approaches}
+
+Graph neural networks (GNNs) have emerged as a powerful paradigm for financial
+fraud detection, motivated by the insight that financial fraud is inherently
+relational~\cite{pourhabibi2022graph}. Fraud rings share resources---devices, IP
+addresses, email domains, and phone numbers---creating network patterns that
+become detectable when applicants and their attributes are represented as
+interconnected nodes in a graph. This relational perspective transforms the
+fraud detection problem from a classification task on isolated feature vectors
+to a node classification task on a graph, where the topology itself carries
+diagnostic information that is invisible to tabular methods. Recent surveys by
+Cheng et al.~\cite{cheng2024graph} and Vanderhulst et
+al.~\cite{vanderhulst2024graph} have documented the rapid growth of GNN-based
+fraud detection methods, highlighting both the promise and the open challenges
+of this approach. The GNN paradigm encompasses a diverse family of
+architectures, each with distinct mechanisms for aggregating neighborhood
+information and different assumptions about the graph structure, motivating the
+systematic comparison conducted in this thesis.
+
+\subsubsection{Graph Construction for Financial Data}
+
+The construction of the graph representation is a critical preprocessing step
+that significantly impacts downstream GNN performance and is often overlooked in
+comparative studies that focus exclusively on model architecture. For the BAF
+dataset, the graph is constructed as a heterogeneous network with approximately
+1,000,047 nodes and roughly 14.5 million directed edges spanning 17 attribute
+types. Nodes represent both applicants and their associated attributes (devices,
+IP addresses, email domains, phone numbers, etc.), while edges encode the
+relationships between applicants and their shared attributes. This bipartite-
+like structure means that applicants are connected indirectly through shared
+attribute nodes, and the resulting graph topology encodes the relational
+patterns that are diagnostic of organized fraud. The scale and heterogeneity of
+this graph present computational challenges for GNN training, including memory-
+efficient neighborhood sampling, mini-batch construction, and handling of
+variable-degree nodes.
+
+The design choices involved in graph construction have received increasing
+attention in the literature, as researchers have recognized that the graph
+representation can be as important as the model architecture in determining
+detection performance. Liu et al.~\cite{liu2021heterogeneous} demonstrated that
+heterogeneous graph representations, which preserve the type information of
+nodes and edges, consistently outperform homogeneous graphs that collapse all
+node and edge types into a single category. The type information allows
+heterogeneous GNNs to apply type-specific transformations to different edge
+categories, enabling the model to distinguish between, for example, a device-
+sharing connection and an email-sharing connection, which may carry very
+different fraud implications. Pandey et al.~\cite{pandey2022graph} investigated
+the impact of feature discretization on graph construction, showing that
+continuous features must be binned into discrete categories to serve as
+attribute nodes, and that the granularity of discretization affects both graph
+density and detection performance. Coarse discretization produces dense graphs
+with many shared attribute nodes but limited discriminative power, while fine
+discretization produces sparse graphs that may not provide sufficient
+connectivity for effective message passing. The interaction between graph
+construction strategies and downstream GNN architectures remains an active area
+of research, as different architectures may benefit from different graph
+representations, and understanding the sensitivity of detection performance to
+graph construction choices is essential for the practical deployment of GNN-
+based fraud detection systems.
+
+\subsubsection{Spatial GNN Architectures: GraphSAGE}
+
+GraphSAGE~\cite{hamilton2017inductive} introduced the inductive representation
+learning paradigm for large-scale graphs, generating node embeddings by sampling
+and aggregating features from a node's local neighborhood. Unlike transductive
+methods such as DeepWalk and node2vec, which require retraining when new nodes
+are added to the graph, GraphSAGE learns an aggregation function that
+generalizes to unseen nodes, making it well-suited for the dynamic nature of
+financial fraud detection where new applications arrive continuously and must be
+classified without retraining the entire model. The original GraphSAGE paper
+proposed three aggregation schemes---mean, LSTM, and pooling---each providing
+different trade-offs between expressiveness and computational cost. The mean
+aggregator computes the element-wise average of neighbor representations,
+providing a simple and robust baseline. The LSTM aggregator applies a recurrent
+network to a randomly permuted sequence of neighbor features, capturing
+sequential dependencies at the cost of order sensitivity. The pooling aggregator
+applies a max-pooling operation across neighbor features, capturing the most
+salient dimensions of the neighborhood representation.
+
+In the fraud detection domain, GraphSAGE has been applied to capture
+neighborhood-level fraud signals through multi-hop information propagation,
+allowing the model to detect fraud patterns that extend beyond an individual
+applicant's features to include the features of related entities. On the BAF
+base dataset, GraphSAGE achieves an AUC of 0.8859 and a TPR@5\%FPR of 52.54\%,
+demonstrating that relational information provides substantial discriminative
+power beyond what is available from tabular features alone. The mean aggregator,
+which computes the element-wise average of neighbor representations, has been
+found to be the most effective for fraud detection, likely because the uniform
+weighting avoids overfitting to individual neighbor signals in sparse regions of
+the graph where the number of neighbors may be small and unrepresentative.
+
+Graph Attention Networks (GAT)~\cite{velivckovic2018graph} extend GraphSAGE by
+learning attention weights over neighbor contributions, allowing the model to
+assign higher importance to more informative neighbors. GAT-based fraud
+detection models can learn to focus on high-risk neighbors (e.g., known
+fraudsters sharing a device) while down-weighting less informative connections
+(e.g., connections through popular email providers shared by many legitimate
+users). However, the attention mechanism introduces additional parameters that
+can be prone to overfitting in the sparse, high-dimensional graphs typical of
+fraud detection, and the performance gains of GAT over GraphSAGE have been
+inconsistent across benchmark datasets. The attention mechanism also adds
+computational overhead during both training and inference, which may be
+significant for large-scale graphs with millions of edges. These considerations
+motivate the use of GraphSAGE as the primary spatial GNN baseline in this
+thesis, while acknowledging that attention-based architectures may offer
+advantages in specific deployment scenarios where interpretability of neighbor
+importance is valued.
+
+\subsubsection{Spectral GNN Architectures: Split GNN with Wavelet Filtering}
+
+Spectral graph theory provides a powerful framework for analyzing graph
+structure through the eigendecomposition of the graph Laplacian, enabling the
+design of GNN architectures that operate in the frequency domain rather than the
+spatial domain. Spectral GNNs apply learnable filters in the frequency domain,
+enabling the model to capture both local and global structural patterns through
+the spectral properties of the graph. ChebNet~\cite{defferrard2016convolutional}
+approximates spectral filters using Chebyshev polynomials of the graph
+Laplacian, providing a computationally efficient alternative to exact spectral
+filtering that avoids the cost of eigendecomposition. Graph Convolutional
+Networks (GCN)~\cite{kipf2017semisupervised} simplify ChebNet to first-order
+approximations, resulting in a scalable architecture that aggregates neighbor
+features with learned weights but sacrifices the multi-scale filtering
+capability of higher-order polynomial approximations. These foundational works
+established the viability of spectral filtering for graph representation
+learning, but their application to fraud detection has been limited by the
+computational cost of spectral decomposition on large-scale graphs and the
+difficulty of designing spectral filters that capture fraud-relevant patterns.
+
+The Split GNN architecture~\cite{wu2023splitgnn} represents a significant
+advance in spectral GNN design for fraud detection, addressing the limitations
+of prior spectral methods through a novel dual-branch filtering mechanism. The
+key innovation is the combination of edge classification with dual-branch
+spectral filtering using Beta polynomial wavelets~\cite{hammond2011wavelets}.
+The edge classifier partitions the graph into subgraphs based on learned edge
+semantics, effectively separating same-class connections (homophilic edges,
+where connected nodes tend to share the same label) from cross-class connections
+(heterophilic edges, where connected nodes tend to have different labels). Each
+subgraph is then processed by an independent wavelet filter branch, allowing the
+model to apply different spectral transformations to different types of
+structural patterns. The Beta wavelet framework enables multi-scale graph signal
+decomposition, capturing both fine-grained local patterns and coarse-grained
+global structures through a family of polynomial wavelet filters of varying
+order. The wavelet order parameter controls the scale of analysis: low-order
+wavelets capture local neighborhood patterns, while high-order wavelets capture
+broader community structures that may indicate organized fraud rings.
+
+On the BAF base dataset, Split GNN achieves a best AUC of 0.8806, slightly below
+GraphSAGE but with different performance characteristics across the precision-
+recall trade-off. The dual-branch architecture allows Split GNN to separately
+model homophilic connections (links between nodes of the same class, which are
+common in shared-device patterns where fraudulent applicants reuse the same
+resources) and heterophilic connections (links between nodes of different
+classes, which may indicate fraudsters sharing attributes with legitimate users
+through popular email providers or widely used IP addresses). This separation is
+particularly valuable in fraud detection, where the graph exhibits mixed
+homophily: fraudulent applicants are connected to each other through shared
+fraudulent resources but also connected to legitimate applicants through common
+infrastructure. The wavelet filtering approach also provides natural multi-scale
+analysis, with lower-order wavelets capturing local neighborhood structure and
+higher-order wavelets capturing broader community patterns that may indicate
+organized fraud rings operating across multiple shared resources.
+
+\subsubsection{Quantum-Inspired GNN Architectures}
+
+Quantum machine learning (QML) has emerged as a promising paradigm for capturing
+complex patterns through high-dimensional quantum feature spaces, offering the
+potential to represent data distributions that are difficult to capture with
+classical architectures. Variational quantum circuits (VQCs) parameterized by
+trainable rotation angles can encode classical data into quantum states, where
+quantum entanglement creates correlations that are difficult to represent
+classically and may capture subtle relational patterns in graph-structured data.
+Recent work by Herrman et al.~\cite{herrman2022quantum} demonstrated the
+application of quantum graph neural networks to classification tasks, showing
+that quantum feature maps can capture subtle patterns in graph-structured data
+through quantum kernel methods and parameterized quantum circuits. The
+theoretical appeal of quantum-enhanced representations lies in the exponential
+size of the quantum Hilbert space, which can in principle represent
+exponentially many feature combinations with a linear number of qubits.
+
+Innan and Finance~\cite{innan2024quantum} proposed the Quantum Graph Neural
+Network (QGNN) architecture, which integrates variational quantum circuits with
+classical graph neural network layers for financial fraud detection. The QGNN
+uses parameterized quantum circuits to process node features, generating
+quantum-enhanced representations that are then propagated through the graph
+using classical message-passing operations. This hybrid quantum-classical design
+allows the quantum circuits to focus on feature transformation while the
+classical GNN handles graph topology, combining the potential advantages of both
+paradigms. On the BAF base dataset, QGNN achieves an AUC of 0.8769,
+underperforming both GraphSAGE and Split GNN. This result suggests that the
+current generation of quantum-inspired architectures, while theoretically
+promising, has not yet reached the practical maturity needed to outperform well-
+tuned classical GNN methods on large-scale fraud detection tasks. The
+underperformance may be attributable to several factors, including the limited
+expressiveness of shallow quantum circuits, the difficulty of optimizing
+variational parameters in the quantum landscape, and the gap between theoretical
+quantum advantage and practical implementation on classical simulators.
+
+A key challenge in QGNN research is the barren plateaus
+phenomenon~\cite{mcclean2018barren}, where the gradient of the variational
+objective vanishes exponentially with the number of qubits, making optimization
+intractable for large-scale circuits. The barren plateaus problem is
+particularly severe for the deep, highly parameterized circuits that would be
+needed to capture the complex relational patterns in financial fraud graphs, and
+it represents a fundamental barrier to scaling quantum-inspired methods to the
+problem sizes typical of production fraud detection systems. Current QGNN
+implementations address this limitation by using shallow circuits with a small
+number of qubits, which limits their expressiveness relative to classical
+alternatives but ensures that optimization remains tractable. Our QGNN
+implementation uses classical tensor operations to simulate quantum effects,
+enabling investigation of quantum-inspired architectures without requiring
+quantum hardware. While this simulation approach does not benefit from the
+potential quantum advantage of true hardware execution, it provides a controlled
+experimental setting for evaluating the architectural contributions of quantum-
+inspired designs independently of hardware noise and implementation constraints.
+The inclusion of QGNN in the comparison framework of this thesis serves to
+establish an empirical baseline for quantum-inspired methods on the BAF
+benchmark and to identify the specific conditions under which quantum effects
+may or may not provide practical advantages for fraud detection.
+
+\subsection{Spiking Neural Network Approaches}
+
+Spiking neural networks (SNNs) represent the third generation of artificial
+neural networks, modeling computation through discrete temporal events (spikes)
+rather than continuous activations~\cite{maass1997networks}. Unlike conventional
+artificial neurons that communicate real-valued activations through weighted
+connections, spiking neurons accumulate incoming synaptic currents into a
+membrane potential that evolves over time according to biologically-inspired
+differential equations, emitting a discrete spike when the potential exceeds a
+threshold. This temporal dynamics enable SNNs to naturally process event-driven
+data streams, making them potentially well-suited for transaction-level fraud
+detection where temporal ordering and inter-arrival timing carry diagnostic
+information. The theoretical appeal of SNNs extends beyond temporal processing
+to include energy efficiency on neuromorphic hardware, robustness through
+population coding, and the potential for biologically plausible learning rules
+that may offer advantages for online adaptation to evolving fraud patterns.
+
+\subsubsection{Mathematical Foundations: The Leaky Integrate-and-Fire Model}
+
+The Leaky Integrate-and-Fire (LIF) neuron is the most widely used spiking neuron
+model in the SNN literature, offering a balance between biological realism and
+computational tractability that makes it suitable for large-scale simulation and
+gradient-based training. The membrane potential dynamics of the LIF neuron are
+governed by the following first-order ordinary differential equation, which
+describes the subthreshold evolution of the membrane potential as a leaky
+integrator of incoming synaptic currents:
+
+\begin{equation}
+\tau_m \cdot \frac{dV(t)}{dt} = -\bigl(V(t) - V_{\text{rest}}\bigr) + R \cdot I(t)
+\end{equation}
+
+where $V(t)$ denotes the membrane potential at time $t$, $\tau_m$ is the
+membrane time constant that controls the rate of potential decay toward the
+resting potential, $V_{\text{rest}}$ is the resting potential to which the
+membrane decays in the absence of input, $R$ is the membrane resistance that
+scales the input current, and $I(t)$ is the input synaptic current at time $t$.
+When the membrane potential exceeds a threshold $V_{\text{th}}$, the neuron
+emits a spike and the membrane potential is reset to $V_{\text{reset}}$, after
+which a refractory period prevents further spiking for a short duration,
+mimicking the biological refractory period of real neurons. The discrete-time
+approximation of this dynamics, commonly used in simulation frameworks such as
+snnTorch, is:
+
+\begin{equation}
+V^{(t+1)} = \alpha \cdot V^{(t)} + (1 - \alpha) \cdot \bigl(W \cdot X^{(t)}\bigr)
+\end{equation}
+
+where $\alpha = \exp(-\Delta t / \tau_m)$ is the decay factor that determines
+how quickly the membrane potential ``forgets'' past inputs, $W$ is the synaptic
+weight matrix, and $X^{(t)}$ is the input at time step $t$. The spike generation
+is modeled as $S^{(t)} = \Theta(V^{(t)} - V_{\text{th}})$, where $\Theta$ is the
+Heaviside step function. The non-differentiability of $\Theta$ presents a
+fundamental challenge for gradient-based optimization, as the gradient of the
+spike function is zero everywhere except at the threshold, where it is
+undefined. This ``dead gradient'' problem is the central computational challenge
+of SNN training and has historically limited the depth and complexity of
+trainable SNN architectures.
+
+Surrogate gradient methods~\cite{zenke2021remarkable} address this challenge by
+replacing the discontinuous spike function with a smooth approximation during
+the backward pass, enabling effective gradient propagation while preserving the
+discrete spike dynamics during the forward pass. The most commonly used
+surrogate gradient is the arc-tangent approximation, which defines the surrogate
+derivative as:
+
+\begin{equation}
+\frac{\partial S^{(t)}}{\partial V^{(t)}} \approx \frac{1}{\pi} \cdot \frac{1}{1
++ \bigl(\pi \cdot (V^{(t)} - V_{\text{th}})\bigr)^2}
+\end{equation}
+
+This approximation provides a smooth, non-vanishing gradient in the vicinity of
+the threshold while decaying gracefully for potentials far from the threshold,
+preventing gradient explosion and ensuring stable training dynamics. The arc-
+tangent surrogate is preferred over alternatives such as the sigmoid or
+piecewise linear approximations because it provides a better balance between
+gradient magnitude and decay rate, facilitating effective credit assignment
+across multiple time steps in deep SNN architectures. Recent advances by
+Eshraghian et al.~\cite{eshraghian2021training} have demonstrated that surrogate
+gradient training can achieve competitive performance on classification
+benchmarks, establishing practical training methodologies for SNNs that open the
+door for applications in domains previously dominated by conventional deep
+learning, including the financial fraud detection application explored in this
+thesis.
+
+\subsubsection{SNNs for Financial Fraud Detection}
+
+The application of SNNs to financial fraud detection is a nascent but rapidly
+growing area of research that sits at the intersection of neuromorphic computing
+and financial technology. Ahmed~\cite{ahmed2025bioinspired} conducted the first
+systematic evaluation of SNNs on the BAF dataset, reporting an AUC of 0.8614 and
+a TPR@5\%FPR of 42.21\% on the BAF base version using a multi-layer LIF network
+trained with surrogate gradient descent. While these results fall below the
+performance of GraphSAGE and classical gradient-boosted methods, the study
+demonstrated the viability of SNNs for tabular fraud detection and identified
+several architectural and training challenges that limit SNN performance,
+providing a foundation for the SNN pipeline developed in this thesis.
+
+Two critical challenges emerged from Ahmed's study that have shaped our
+understanding of SNN limitations for fraud detection. First, SNNs exhibit
+calibration instability under extreme class imbalance, as the spike rate
+distributions of legitimate and fraudulent inputs overlap significantly when the
+minority class constitutes only 1.10\% of the training data. The rate coding
+scheme used to convert continuous tabular features into spike trains produces
+similar firing patterns for both classes, reducing the discriminative capacity
+of the spiking representations. The overlap in spike rate distributions means
+that the SNN's decision boundary in spike rate space is poorly defined for the
+minority class, leading to high false negative rates at the low false positive
+rate operating points required by operational fraud detection systems. Second,
+SNNs suffer from temporal generalization failure on distributional shift
+variants of the BAF dataset, where the temporal drift in feature distributions
+between training and test periods disrupts the learned spike timing patterns.
+The membrane time constant $\tau_m$, which governs the temporal integration
+window of LIF neurons, proves to be a critical hyperparameter: values optimized
+for the training period may be inappropriate for the test period, leading to
+degraded detection performance. This sensitivity to the membrane time constant
+suggests that adaptive or learned temporal dynamics may be necessary for SNNs to
+achieve robust performance under distributional shift.
+
+Nasif et al.~\cite{nasif2026reinforcement} proposed a reinforcement-guided
+hyper-heuristic approach for SNN optimization, using a reinforcement learning
+agent to dynamically select and configure SNN hyperparameters (including
+membrane time constants, threshold potentials, and learning rates) during
+training. This approach addresses the difficulty of manual hyperparameter tuning
+for SNNs, which have a larger and more complex hyperparameter space than
+conventional neural networks due to the additional temporal dynamics parameters
+of LIF neurons. The reinforcement-guided approach treats hyperparameter
+selection as a sequential decision problem, where the agent learns a policy that
+maps the current training state to hyperparameter adjustments, enabling adaptive
+optimization that responds to the training dynamics. While promising, the
+reinforcement-guided approach introduces significant computational overhead due
+to the need for repeated policy evaluation and has not yet been evaluated on the
+full BAF variant suite, leaving questions about its robustness under
+distributional shift and its scalability to large-scale fraud detection
+problems.
+
+The potential advantages of SNNs for fraud detection remain largely theoretical
+at present, but they motivate continued research into spiking architectures for
+financial applications. Rate coding and temporal representations could
+potentially capture the sequential nature of transaction streams more naturally
+than static feature vectors, encoding the temporal dynamics of application
+submission patterns that may be diagnostic of coordinated fraud campaigns. The
+event-driven computation paradigm aligns with the irregular arrival patterns of
+financial transactions, suggesting potential for low-latency inference in real-
+time fraud screening systems where processing speed is critical. Population
+coding across neuron ensembles could provide robust representations that are
+resilient to adversarial perturbations, an important consideration given the
+adversarial nature of fraud and the vulnerability of conventional neural
+networks to adversarial examples. Finally, the energy efficiency of SNNs on
+neuromorphic hardware may enable edge-deployable fraud screening in scenarios
+where computational resources are limited, such as mobile banking applications
+or point-of-sale fraud prevention. However, realizing these advantages requires
+overcoming the fundamental challenges of training deep SNNs under extreme class
+imbalance and distributional shift, challenges that this thesis addresses
+through systematic architectural and training methodology exploration.
+
+\subsection{Autoencoder-Based Approaches}
+
+Autoencoders provide a powerful framework for unsupervised anomaly detection by
+learning to compress and reconstruct normal data patterns, with reconstruction
+errors serving as anomaly scores. The fundamental premise is that an autoencoder
+trained predominantly on legitimate transactions will learn to reconstruct
+normal patterns accurately while producing high reconstruction errors for
+anomalous (fraudulent) transactions that deviate from the learned data manifold.
+This unsupervised paradigm is particularly attractive for fraud detection
+because it does not require labeled fraud examples during training, addressing
+the practical challenge of obtaining reliable fraud labels in operational
+settings where fraud confirmation may take weeks or months and the definition of
+fraud may evolve over time. The autoencoder framework encompasses several
+architectural variants, each with distinct mechanisms for learning the data
+manifold and different implications for anomaly detection performance.
+
+\subsubsection{Standard and Variational Autoencoders}
+
+Standard autoencoders consist of an encoder that maps input features to a lower-
+dimensional latent representation and a decoder that reconstructs the input from
+the latent code. The training objective minimizes the reconstruction error,
+typically measured as mean squared error or binary cross-entropy, between the
+input and its reconstruction. The encoder and decoder are trained jointly to
+minimize this reconstruction loss, with the bottleneck architecture of the
+latent space forcing the model to capture the most important aspects of the data
+distribution. However, standard autoencoders suffer from an identity mapping
+vulnerability: when the model capacity is sufficiently large relative to the
+complexity of the input, the autoencoder can learn to reconstruct all inputs---
+including anomalies---with low error, effectively memorizing the input rather
+than learning the underlying data manifold. This vulnerability is particularly
+problematic for fraud detection, where the high dimensionality of financial
+features (30 attributes in the BAF dataset) and the relative simplicity of the
+fraud signal may allow the autoencoder to reconstruct fraudulent transactions as
+effectively as legitimate ones, rendering the reconstruction error uninformative
+as an anomaly score.
+
+Variational Autoencoders (VAEs)~\cite{kingma2014auto} address this limitation by
+introducing a probabilistic framework that models the data distribution through
+a learned latent space. Rather than mapping inputs to single points in the
+latent space, VAEs encode inputs as distributions parameterized by mean
+$\boldsymbol{\mu}$ and variance $\boldsymbol{\sigma}^2$, from which samples are
+drawn using the reparameterization trick that enables gradient-based
+optimization through the sampling operation. The training objective maximizes
+the evidence lower bound (ELBO), which balances reconstruction quality against a
+KL divergence penalty that regularizes the latent space toward the prior
+distribution:
+
+\begin{equation}
+\mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}|\mathbf{x})}\bigl[\log
+p(\mathbf{x}|\mathbf{z})\bigr] - D_{\text{KL}}\bigl(q(\mathbf{z}|\mathbf{x})
+\,\|\, p(\mathbf{z})\bigr)
+\end{equation}
+
+where the first term encourages faithful reconstruction of the input from the
+latent sample, and the KL divergence term regularizes the approximate posterior
+$q(\mathbf{z}|\mathbf{x})$ toward the prior $p(\mathbf{z}) =
+\mathcal{N}(\mathbf{0}, \mathbf{I})$, preventing the latent space from
+overfitting to the training distribution. This regularization is the key
+mechanism that mitigates the identity mapping vulnerability: by forcing the
+latent space to be smooth and continuous rather than allowing it to memorize
+individual instances, the VAE ensures that inputs that deviate from the learned
+data manifold are mapped to regions of latent space that produce high
+reconstruction errors. The probabilistic nature of VAEs also enables principled
+uncertainty quantification, which is valuable for flagging borderline cases for
+manual review in operational fraud detection systems.
+
+Obushyni et al.~\cite{obushyni2025vae} conducted a comprehensive evaluation of
+VAEs on the BAF dataset, demonstrating that a well-tuned VAE achieves an AUC of
+0.8954 on the BAF base version, substantially outperforming a standard
+autoencoder that achieves an AUC of only approximately 0.55. The dramatic
+performance gap between VAE and standard autoencoder confirms the severity of
+the identity mapping problem: the standard autoencoder learns to reconstruct
+both legitimate and fraudulent transactions with similar fidelity, rendering the
+reconstruction error uninformative as an anomaly score. The VAE's probabilistic
+regularization prevents this failure mode by ensuring that the latent space
+captures the generative structure of the data rather than memorizing individual
+instances, so that fraudulent transactions---which deviate from the learned
+generative model---produce higher reconstruction errors and lower log-
+likelihoods. Daoud et al.~\cite{daoud2025hybrid} proposed a hybrid VAE-
+autoencoder model that combines the probabilistic regularization of VAEs with
+the reconstruction fidelity of standard autoencoders, reporting improved
+stability across BAF variants and suggesting that the complementary strengths of
+probabilistic and deterministic reconstruction can be combined for more robust
+anomaly detection. Gouda et al.~\cite{gouda2022deepvae} explored deep VAE
+architectures for unsupervised outlier detection, demonstrating that
+hierarchical latent spaces with multiple levels of abstraction can capture
+multi-scale patterns in financial data, with lower levels capturing fine-grained
+feature interactions and higher levels capturing broader distributional
+patterns.
+
+\subsubsection{Denoising Autoencoders for Fraud Detection}
+
+Denoising Autoencoders (DAEs)~\cite{vincent2010stacked} take a complementary
+approach to the identity mapping problem by learning to reconstruct clean inputs
+from corrupted versions. The corruption process forces the autoencoder to learn
+robust feature representations that capture the underlying data manifold rather
+than memorizing the input, because the model must infer the original values of
+corrupted features from the uncorrupted ones, which requires understanding the
+inter-feature dependencies that characterize the data distribution. For tabular
+fraud data, the most effective corruption strategy is swap noise, where a subset
+of input features is randomly replaced with values drawn from the empirical
+marginal distribution of the training set. This strategy is particularly
+effective for tabular data because it breaks feature-level identity mappings
+while preserving the statistical properties of the data, forcing the DAE to
+learn inter-feature dependencies that distinguish legitimate from fraudulent
+patterns. Anomalous (fraudulent) transactions, which violate the learned inter-
+feature relationships, produce high reconstruction errors even without
+corruption applied at test time, because the learned dependencies are specific
+to the legitimate class distribution.
+
+On the BAF base dataset, a standalone DAE achieves an AUC of only 0.5210, barely
+above random guessing and dramatically below the performance of VAE and graph-
+based methods. This seemingly poor performance is misleading and requires
+careful interpretation: the DAE is learning meaningful representations of the
+data manifold, but the reconstruction error alone is insufficient to
+discriminate between legitimate and fraudulent transactions when the fraud
+signal is subtle relative to the normal variation in the data. The
+reconstruction error distribution for fraudulent transactions overlaps heavily
+with that for legitimate transactions, making it a poor anomaly score in
+isolation. The diagnostic value of the DAE emerges when its learned
+representations or reconstruction errors are used as features for a downstream
+classifier, rather than as a standalone anomaly detector, a finding that
+motivates the hybrid approach explored in this thesis.
+
+Dong~\cite{dong2025enhanced} conducted the most comprehensive evaluation of DAEs
+for fraud detection to date, systematically investigating the interaction
+between denoising pretraining, resampling strategies, and downstream
+classification. A key finding of Dong's study is the resampling paradox: while
+ADASYN and SMOTE improve the performance of classical classifiers by providing a
+more balanced training signal, they degrade the performance of DAE-based methods
+by corrupting the learned data manifold. The synthetic minority instances
+generated by resampling methods violate the true data distribution, causing the
+DAE to learn a corrupted manifold that does not accurately represent either the
+legitimate or fraudulent class. When the DAE is trained on resampled data, the
+corruption pattern it learns reflects the artificial distribution rather than
+the true data-generating process, reducing the discriminative value of the
+reconstruction error. This finding is consistent with the resampling paradox
+observed for GNNs and underscores the need for paradigm-specific preprocessing
+strategies in multi-model fraud detection systems.
+
+\subsubsection{Stacked Ensemble and Hybrid Approaches}
+
+The complementary strengths of VAE and DAE anomaly detection motivate their
+combination through score-level stacking, a meta-learning approach that
+leverages the diversity of anomaly signals from multiple autoencoder paradigms.
+Unlike feature-level fusion, which concatenates latent representations before
+classification, score-level stacking operates on the output anomaly scores,
+allowing each autoencoder to optimize its own architecture and training
+objective independently. The VAE provides a distribution-aware anomaly score
+based on the log-likelihood of the input under the learned generative model,
+capturing deviations from the probabilistic data distribution. The DAE provides
+a robustness-based anomaly score reflecting the degree to which the input
+violates the learned inter-feature dependencies, capturing deviations from the
+structural data manifold. These scores capture different aspects of
+anomalousness, and their combination through a meta-learner can achieve higher
+detection performance than either autoencoder alone by exploiting the orthogonal
+information in the two anomaly signals.
+
+Gradient-boosted decision trees---specifically XGBoost~\cite{chen2016xgboost}
+and LightGBM~\cite{ke2017lightgbm}---serve as effective meta-learners for score-
+level stacking, as they can capture non-linear interactions between anomaly
+scores and are robust to the varying scales and distributions of individual
+autoencoder outputs. Grinsztajn et al.~\cite{grinsztajn2022tree} demonstrated
+that tree-based methods generally outperform deep learning on tabular data,
+providing theoretical justification for their use as meta-learners in hybrid
+autoencoder-tree pipelines. The tree-based meta-learner can also incorporate
+original tabular features alongside autoencoder scores, allowing it to leverage
+both the learned representations and the raw feature information for improved
+discrimination. Xu et al.~\cite{xu2019neural} proposed neural architecture
+search for autoencoder optimization, enabling automated tuning of latent
+dimensionality, corruption rate, and architectural choices that are critical for
+detection performance.
+
+The hybrid DAE-XGBoost approach achieves an AUC of 0.8752 on the BAF base
+dataset, a substantial improvement over the standalone DAE (AUC 0.5210) and
+competitive with graph-based methods. This result demonstrates that the DAE
+learns useful representations despite its poor standalone performance, and that
+the discriminative power of gradient-boosted trees can effectively combine
+autoencoder-derived features with original tabular features for improved fraud
+detection. The hybrid approach also offers practical advantages in terms of
+interpretability, as the feature importance scores of the gradient-boosted meta-
+learner can reveal which autoencoder scores and original features contribute
+most to the detection decision. Pombal et al.~\cite{pombal2022understanding}
+provided a systematic study of ensemble strategies for anomaly detection,
+confirming that score-level stacking consistently outperforms both individual
+models and feature-level fusion approaches, particularly under the extreme class
+imbalance conditions characteristic of fraud detection.
+
+\subsection{Comparative Analysis of Approaches}
+
+The survey of approaches presented in the preceding sections reveals a complex
+landscape in which no single paradigm consistently dominates across all
+evaluation metrics and dataset variants. Table~\ref{tab:litreview-comparison}
+summarizes the representative performance of each approach on the BAF base
+dataset, highlighting the trade-offs between AUC, TPR@5\%FPR, and architectural
+complexity that practitioners must navigate when selecting detection methods.
+
+\begin{table}[htbp]
+\centering
+\caption{Representative performance of fraud detection approaches on the BAF
+base dataset. Entries marked ``---'' indicate metrics not reported in the
+original study.}
+\label{tab:litreview-comparison}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Approach} & \textbf{AUC} & \textbf{TPR@5\%FPR} \\
+\midrule
+Gradient-Boosted Trees (GBM) & 0.98 & $<$50\% \\
+VAE & 0.8954 & --- \\
+GraphSAGE & 0.8859 & 52.54\% \\
+Split GNN & 0.8806 & --- \\
+QGNN & 0.8769 & --- \\
+DAE-XGBoost (Hybrid) & 0.8752 & --- \\
+SNN (LIF) & 0.8614 & 42.21\% \\
+Standalone DAE & 0.5210 & --- \\
+Standard Autoencoder & $\sim$0.55 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Several important observations emerge from this comparative analysis that inform
+the design of this thesis. First, classical gradient-boosted methods achieve the
+highest AUC overall (0.98), but their TPR at operationally relevant FPR levels
+is below 50\%, indicating that a significant proportion of fraudulent
+applications evade detection in practical deployment scenarios where the false
+positive budget is tightly constrained. This paradox---high AUC with low
+operational TPR---reflects the fact that AUC averages performance across all
+possible thresholds, including many that are operationally irrelevant, and
+motivates the use of TPR@5\%FPR as a complementary metric throughout this
+thesis.
+
+Second, GraphSAGE achieves the highest TPR@5\%FPR (52.54\%) among the deep
+learning methods compared, demonstrating the value of relational information for
+detecting the most subtle fraud patterns that escape tabular classifiers. The
+superior TPR at low FPR suggests that the graph topology encodes information
+that is particularly valuable for identifying the borderline cases that are most
+challenging for tabular methods, and that the message-passing mechanism of
+spatial GNNs effectively propagates this information to the nodes that need it
+most.
+
+Third, the VAE achieves a surprisingly high AUC (0.8954) as a standalone
+unsupervised method, outperforming several supervised approaches and indicating
+that the probabilistic latent space captures fraud-relevant structure even
+without explicit supervision. This result suggests that unsupervised methods may
+have a valuable role to play in multi-paradigm fraud detection systems, either
+as standalone detectors or as components of hybrid ensembles that combine
+supervised and unsupervised signals.
+
+Fourth, the dramatic gap between standalone DAE (AUC 0.5210) and hybrid DAE-
+XGBoost (AUC 0.8752) underscores the importance of downstream classification for
+unlocking the discriminative value of autoencoder representations and
+demonstrates that the DAE's failure as a standalone detector does not reflect a
+failure of representation learning but rather a failure of the reconstruction
+error as a direct anomaly score for tabular fraud data.
+
+Fifth, SNNs currently lag behind other deep learning paradigms, with the lowest
+AUC (0.8614) and TPR@5\%FPR (42.21\%) among the compared methods, indicating
+that significant architectural and training innovations are needed to make SNNs
+competitive for fraud detection. The calibration instability and temporal
+generalization failure identified by Ahmed~\cite{ahmed2025bioinspired} represent
+specific technical challenges that this thesis addresses through systematic
+experimentation with SNN architectures and training methodologies.
+
+Finally, the incompleteness of the comparison table---with several TPR@5\%FPR
+values unreported---reflects a broader problem in the literature: the absence of
+a unified evaluation protocol that reports a consistent set of metrics across
+all paradigms. This gap motivates the systematic multi-paradigm comparison
+conducted in this thesis, which evaluates all approaches under identical
+conditions using a comprehensive suite of metrics.
+
+\section{Identification of Research Gaps}
+
+The comprehensive literature review presented in this chapter reveals several
+critical gaps in the current state of research on deep learning for financial
+fraud detection. Each gap represents an opportunity for methodological
+innovation and empirical investigation that this thesis addresses. In this
+section, we identify and discuss five principal research gaps, followed by a
+summary of how this thesis fills these voids and advances the state of the art.
+
+\subsection{Gap 1: Absence of Multi-Paradigm Comparison Under Unified Conditions}
+
+The existing literature on deep learning for fraud detection is fragmented
+across individual paradigms, with studies typically evaluating a single model
+family in isolation using dataset-specific preprocessing and evaluation
+protocols. Pourhabibi~\cite{pourhabibi2022graph} and Cheng et
+al.~\cite{cheng2024graph} have both highlighted the lack of systematic cross-
+paradigm comparisons in their surveys of GNN-based fraud detection, noting that
+the absence of controlled comparisons makes it impossible to determine whether
+observed performance differences reflect genuine architectural advantages or
+merely differences in hyperparameter tuning, preprocessing pipelines, and
+evaluation methodology. This fragmentation is particularly problematic for
+practitioners who must select among competing paradigms for deployment, as the
+relative strengths and weaknesses of GNN, SNN, and autoencoder-based approaches
+have never been characterized under identical experimental conditions.
+
+The absence of unified comparison also obscures the complementary potential of
+different paradigms. As demonstrated in our comparative analysis, GraphSAGE
+excels at TPR@5\%FPR, VAEs achieve high AUC through probabilistic modeling, and
+hybrid DAE-XGBoost systems leverage autoencoder representations for
+discriminative classification. A multi-paradigm system that combines these
+complementary strengths could potentially achieve performance that exceeds any
+single paradigm, but the design of such a system requires a detailed
+understanding of how the paradigms differ in their error patterns, failure
+modes, and sensitivity to preprocessing choices. The lack of unified comparison
+also means that the resampling paradox---where ADASYN helps classical models but
+hurts GNNs and DAEs---cannot be assessed in the context of a complete multi-
+paradigm system, limiting the practical guidance available for system design.
+This thesis provides the first systematic multi-paradigm comparison under
+unified experimental conditions on the BAF dataset suite, establishing the
+empirical foundation for principled paradigm selection and combination.
+
+\subsection{Gap 2: Insufficient Exploitation of Relational Structure in Anomaly
+Detection}
+
+Autoencoder-based anomaly detection methods, including both VAEs and DAEs,
+operate exclusively on tabular feature representations and fail to exploit the
+relational structure that graph-based methods leverage for fraud detection. This
+represents a significant missed opportunity, as the graph topology encodes
+relational patterns---such as shared devices, common IP addresses, and
+overlapping contact information---that are among the most reliable indicators of
+organized fraud. The current separation between graph-based methods (which
+exploit relational structure but may not capture fine-grained feature
+interactions) and autoencoder-based methods (which capture feature interactions
+but ignore relational structure) suggests that a combined approach could achieve
+superior performance by leveraging both sources of information simultaneously.
+
+The integration of relational information into autoencoder architectures is not
+straightforward and presents several design challenges. Naive approaches such as
+concatenating graph-derived features (e.g., GraphSAGE embeddings) with original
+tabular features before autoencoder input may fail because the autoencoder can
+learn to reconstruct the graph features independently of the tabular features,
+diluting the relational signal and reducing the complementary value of the
+combined representation. More sophisticated approaches, such as graph-
+regularized autoencoders that enforce consistency between the autoencoder latent
+space and the graph topology, or conditional VAEs that generate reconstructions
+conditioned on neighborhood information, have been proposed in the broader
+representation learning literature but have not been systematically evaluated
+for financial fraud detection. This thesis investigates the potential for
+relational information to improve autoencoder-based anomaly detection through
+score-level combination with graph-based methods, providing the first empirical
+assessment of cross-paradigm complementarity on the BAF dataset and establishing
+whether the relational and feature-based signals are indeed orthogonal and
+combinable.
+
+\subsection{Gap 3: Limited Understanding of Denoising Autoencoders for Tabular
+Fraud Data}
+
+While denoising autoencoders have a well-established theoretical foundation in
+the image domain~\cite{vincent2010stacked}, their application to tabular fraud
+data remains poorly understood. The swap noise corruption strategy that is
+effective for tabular data introduces unique challenges that differ
+fundamentally from the Gaussian noise or masking corruption used in image-based
+DAEs. In the image domain, spatial locality ensures that corrupted pixels can be
+inferred from their neighbors, but tabular features lack spatial structure, and
+the inter-feature dependencies that enable denoising are learned purely from
+statistical correlations in the data. The optimal corruption rate, the
+interaction between corruption rate and class imbalance, and the relationship
+between DAE latent dimensionality and detection performance have not been
+systematically characterized for fraud detection. Dong~\cite{dong2025enhanced}
+provided the most comprehensive evaluation to date, but several questions remain
+open, including the sensitivity of DAE performance to the specific features
+selected for corruption, the impact of corruption rate scheduling during
+training, and the effectiveness of DAE-derived features for detecting specific
+fraud subtypes.
+
+Furthermore, the stark contrast between standalone DAE performance (AUC 0.5210)
+and hybrid DAE-XGBoost performance (AUC 0.8752) raises fundamental questions
+about what the DAE actually learns and why its representations are useful only
+when combined with a downstream classifier. Understanding the nature of DAE
+representations for fraud data---whether they capture class-relevant structure,
+feature interactions, or data manifold geometry---is essential for designing
+more effective autoencoder architectures and for determining the conditions
+under which DAE-based methods are most likely to succeed. The identity mapping
+vulnerability, while mitigated by the denoising objective, may persist in
+attenuated form, and the conditions under which the DAE fails to learn
+discriminative representations remain unclear. This thesis contributes to this
+understanding through systematic ablation studies that isolate the contributions
+of different DAE design choices to downstream detection performance, providing
+practical guidance for the deployment of DAE-based methods in fraud detection
+systems.
+
+\subsection{Gap 4: Temporal Robustness Across Distributional Shifts}
+
+The temporal evaluation framework of the BAF dataset suite, with its six
+variants designed to test different aspects of distributional shift, reveals a
+critical gap in the current literature: the temporal robustness of fraud
+detection models is insufficiently characterized. Sun et
+al.~\cite{sun2025objective} demonstrated that models optimized for performance
+on the BAF base version often exhibit severe performance degradation on the
+temporal shift variants (particularly Variant~IV and Variant~V), yet most
+published studies report results only on the base version or on random
+stratified splits that do not reflect the temporal reality of fraud detection.
+This practice leads to an overly optimistic assessment of model capability and
+fails to identify the architectural and training choices that promote temporal
+robustness, creating a misleading picture of model readiness for production
+deployment.
+
+The challenge of temporal robustness is paradigm-specific, with each paradigm
+exhibiting distinct failure modes under distributional shift that reflect its
+architectural assumptions and learning mechanisms. For GNNs, distributional
+shift may alter the graph topology (as new types of attribute nodes emerge over
+time) and the feature distributions of existing nodes, requiring inductive
+generalization beyond the training graph structure and potentially disrupting
+the message-passing patterns that the model has learned. For SNNs, temporal
+shift disrupts the learned spike timing patterns and membrane dynamics, as the
+optimal membrane time constant may change with the evolving data distribution,
+causing the temporal integration window to become misaligned with the true
+temporal structure of the data. For autoencoders, distributional shift may cause
+the learned data manifold to diverge from the test distribution, leading to
+systematically biased reconstruction errors that affect the calibration of
+anomaly scores. Understanding these paradigm-specific failure modes and
+developing mitigation strategies---such as temporal regularization, domain
+adaptation, or continuous learning---is essential for deploying fraud detection
+models in production environments where the data distribution is non-stationary.
+This thesis evaluates all three paradigms across the full BAF variant suite,
+providing the first comprehensive characterization of temporal robustness across
+deep learning paradigms for fraud detection.
+
+\subsection{Gap 5: Integration of Software Engineering Practices with Multi-
+Model Fraud Detection}
+
+The deployment of multi-paradigm fraud detection systems in production
+environments raises software engineering challenges that have received virtually
+no attention in the academic literature. While individual model architectures
+have been extensively studied, the engineering of systems that combine multiple
+paradigms---including model versioning, reproducible training pipelines,
+consistent evaluation protocols, and maintainable codebases---has been largely
+neglected. The practical challenges of deploying and maintaining a multi-model
+system in a financial institution include managing dependencies between model
+components, ensuring reproducibility across hardware and software environments,
+implementing robust monitoring and alerting for model degradation, and
+maintaining audit trails for regulatory compliance. These engineering
+considerations are not merely incidental but are essential for translating
+academic research into operational systems that deliver reliable fraud detection
+at scale.
+
+The gap between academic model development and production system engineering is
+particularly acute for multi-paradigm systems, where each paradigm may require
+different preprocessing, training infrastructure, and inference pipelines. GNNs
+require graph construction and neighborhood sampling, which involve complex data
+structures and sampling algorithms that must be carefully validated for
+correctness and efficiency. SNNs require temporal simulation and surrogate
+gradient computation, which introduce additional computational steps and
+hyperparameters that must be managed and tuned. Autoencoders require corruption
+scheduling and latent space regularization, which add complexity to the training
+pipeline and may interact with other preprocessing steps. Integrating these
+diverse requirements into a cohesive, maintainable system demands careful
+software architecture design and adherence to engineering best practices such as
+modular design, comprehensive testing, and configuration management. This thesis
+addresses this gap by developing a well-engineered multi-pipeline system that
+demonstrates the feasibility of integrating GNN, SNN, and autoencoder paradigms
+within a unified software framework, providing a template for the practical
+deployment of multi-model fraud detection systems that can be maintained,
+extended, and audited by engineering teams.
+
+\subsection{Summary: How This Thesis Fills the Void}
+
+The five research gaps identified above collectively define the contribution
+space of this thesis and establish the motivation for the multi-paradigm
+investigation that follows. Gap~1 motivates the need for a unified multi-
+paradigm comparison, which this thesis provides through systematic evaluation of
+GraphSAGE, Split GNN, QGNN, LIF-based SNN, VAE, and DAE-XGBoost pipelines on the
+complete BAF variant suite under identical experimental conditions, including
+consistent preprocessing, evaluation metrics, and hyperparameter tuning
+procedures. Gap~2 motivates the exploration of cross-paradigm complementarity,
+which this thesis investigates through score-level combination of graph-based
+and autoencoder-based anomaly scores, testing the hypothesis that relational and
+feature-based signals provide orthogonal information that can be combined for
+improved detection. Gap~3 motivates the systematic study of DAE design choices
+for tabular fraud data, which this thesis addresses through comprehensive
+ablation experiments that characterize the sensitivity of DAE performance to
+corruption rate, latent dimensionality, and architectural configuration. Gap~4
+motivates the evaluation of temporal robustness across distributional shifts,
+which this thesis provides through evaluation on all six BAF variants with
+temporal train-test splits, characterizing the paradigm-specific failure modes
+and identifying architectural choices that promote robustness. Gap~5 motivates
+the integration of software engineering practices, which this thesis
+demonstrates through the design and implementation of a modular, reproducible
+multi-pipeline system that serves as both a research platform and a template for
+production deployment.
+
+By addressing these gaps in a single, coherent body of work, this thesis makes
+both methodological and practical contributions to the field of financial fraud
+detection. The methodological contributions include the first systematic multi-
+paradigm comparison, the characterization of cross-paradigm complementarity, and
+the identification of paradigm-specific failure modes under distributional
+shift. The practical contributions include design recommendations for multi-
+paradigm fraud detection systems, engineering patterns for multi-model
+deployment, and empirical guidelines for paradigm selection and combination in
+different operational contexts. Together, these contributions advance the state
+of the art from isolated single-paradigm studies toward an integrated, multi-
+paradigm understanding of deep learning for financial fraud detection, providing
+both the empirical evidence and the engineering infrastructure needed to
+translate research advances into operational fraud detection systems.
