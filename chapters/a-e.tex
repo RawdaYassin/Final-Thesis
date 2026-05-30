@@ -1,0 +1,402 @@
+\documentclass[11pt,a4paper]{report}
+
+% Required packages
+\usepackage{graphicx}  % For handling images
+\usepackage{booktabs}  % For professional table formatting
+\usepackage{amsmath}   % For advanced math typography
+\usepackage{amssymb}   % For math symbols
+\usepackage{hyperref}  % For clickable links
+
+\begin{document}
+
+\chapter{Unsupervised Feature Extraction and Latent Space Topology Manifolds via Variational and Denoising Autoencoders}
+
+\section{Main Questions and Requirements of the Experiments}
+
+\subsection{Contextual Overview: Deep Autoassociative Models for Banking Cyberfraud Interception}
+The exponential growth of digital banking platforms, instant mobile transaction architectures, and algorithmic financial services has fundamentally transformed the global economic landscape, minimizing operational latencies and increasing the accessibility of consumer capital mobility. However, this widespread digitization has simultaneously expanded the structural attack surface for malicious syndicates and coordinated financial actors. The result is a proliferation of sophisticated cyberfraud vectors that inflict severe economic damage, degrade institutional trust, and introduce system-wide security risks across the banking sector. 
+
+Within this operational landscape, intercepting fraudulent account openings and identifying illicit transactional behavior in real time presents a highly complex computational challenge. This security imperative requires a protective system that operates under strict business constraints: the network must execute low-latency inference to flag malicious indicators without disrupting the friction-free experience required by legitimate banking clients. 
+
+Historically, financial institutions have deployed traditional supervised neural networks, axis-aligned decision trees, and gradient-boosted tree ensembles to serve as the primary defensive perimeter against transactional fraud [7], [8]. While these conventional architectures are highly effective at mapping non-linear feature interactions under stable, well-balanced environmental conditions, they face critical limitations when deployed in live production settings. Standard supervised paradigms operate under the fundamental inductive bias that the training and testing sets are drawn from an identical, independently distributed (i.i.d.) random variable space. In empirical banking environments, this assumption is invalidated by two core factors: extreme class imbalance and continuous adversarial adaptation. 
+
+To resolve these computational vulnerabilities, we establish an unsupervised connectionist framework within this technical chapter, shifting the underlying modeling objective from supervised boundary estimation to deep autoassociative manifold learning. Deep autoassociative connectionist architectures---specifically Variational Autoencoders (VAEs) and Denoising Autoencoders (DAEs)---are neural networks designed to learn compact [5], [6], low-dimensional representations of data by projecting inputs through a regularized bottleneck layer and subsequently reconstructing those inputs at the output layer. By completely isolating the optimization routine of these autoassociative networks to strictly non-fraudulent, legitimate transaction profiles during the training phase, the models are forced to internalize the dense structural dependencies, cross-attribute alignments, and latent regularities that define normal consumer behavior. 
+
+Unsupervised anomaly detection operates under the geometric hypothesis that legitimate banking behaviors form a compact, smooth, low-dimensional manifold embedded within the high-dimensional sparse feature space, whereas fraudulent interventions deviate significantly from this coordinate topology. Consequently, when an anomalous or fraudulent transaction vector is passed through the trained autoassociative network, the model fails to map the unfamiliar feature correlations back to its internalized manifold coordinates. This mapping failure manifests as a highly elevated reconstruction error signature. This reconstruction discrepancy provides a robust, unsupervised indicator of abnormality that does not rely on static historical labels, allowing the system to isolate novel, uncataloged fraud vectors effectively.
+
+\subsection{Inductive Bias Failure Under Extreme Class Imbalance}
+The primary mathematical barrier to deploying standard supervised classifiers in financial systems is the extreme class imbalance inherent in real-world transaction streams. Empirical validation in our research utilizes the NeurIPS 2022 Bank Account Fraud (BAF) dataset suite, which contains 1,000,000 instances [62]. Within these data, the affirmative target label \texttt{fraud\_bool} exhibits a minority representation of exactly 0.0110, or a 1.10\% fraud prevalence rate. Legitimate applications comprise the remaining 0.9890 (98.90\%) majority share of the transaction matrix. 
+
+When supervised algorithms---such as standard Artificial Neural Networks (ANNs) or gradient-boosted trees---are trained on datasets with an operational imbalance of 1.10\%, their internal optimization objectives are systematically overwhelmed by the majority class. The global empirical risk minimization objective optimizes for overall accuracy:
+
+\begin{equation}
+\mathcal{R}_{emp}(\theta)=\frac{1}{N}\sum_{i=1}^{N}\mathcal{L}(f(x_{i};\theta),y_{i})
+\end{equation}
+
+Under a 1.10\% baseline minority distribution, a trivial classifier that blindly predicts every transaction to be legitimate achieves a highly optimistic accuracy score of 98.90\%. Consequently, the gradient descent trajectory drives the model's decision hyperplanes tightly against the minority fraud coordinates, maximizing majority-class specificity while causing a near-total collapse in minority-class true positive rates (recall). 
+
+Supervised tree-based models, such as standard XGBoost [68] or LightGBM [69] implementations, attempt to navigate this space by recursively partitioning the feature coordinates based on information gain metrics like Shannon Entropy or Gini Impurity. However, under extreme imbalance, the sparse fraud instances frequently hide within localized noise variations of the continuous attributes. This hiding forces the decision trees to split on shallow, ungeneralized parameters, generating excessively deep branches that fail to capture the true underlying fraud mechanics. 
+
+Furthermore, standard supervised boundaries are highly vulnerable to adversarial adaptation and temporal drift. Fraudulent networks do not remain static; instead, they alter their operational methods dynamically to exploit emerging vulnerabilities and bypass automated defenses. In financial datasets, this adaptation causes severe data distribution shifts over time. Legitimate consumer behaviors maintain stable, highly correlated marginal distributions over extended chronological horizons. Fraud patterns, whereas, manifest as non-stationary variations where features like transaction velocities, requested limit logs, and session lengths change rapidly across chronological periods. When a supervised system encounters a shifted fraud signature in production that was absent from its training partition, its static classification boundaries fail catastrophically. The model misclassifies the novel adversarial vector as a legitimate transaction because it maps outside the tightly bounded historical fraud coordinates. 
+
+Deep autoassociative models completely circumvent this limitation. Because the autoencoder's optimization routine is agnostic to downstream target labels and isolates its training exclusively to legitimate consumer samples, the network does not establish an artificial classification boundary between highly imbalanced classes. Instead, it learns the robust, time-invariant structural properties of the clean transaction manifold. When fraudsters adapt their behaviors, their modified signatures naturally deviate from this internalized legitimate manifold topology. This deviation automatically triggers an elevated reconstruction error, allowing the system to isolate novel adversarial maneuvers without requiring retrospective labeled training passes.
+
+\subsection{Formulation of Primary Research Questions}
+To establish a rigorous empirical foundation for this investigation and address the computational vulnerabilities of supervised models, we formulate three distinct technical research questions. These questions guide our hyperparameter selection, architectural design choices, and comparative evaluation protocols across the multi-version benchmark data suites:
+
+\begin{itemize}
+    \item \textbf{First Research Question (RQ1):} To what extent can a continuous probabilistic latent space topology successfully mitigate the risk of posterior distribution collapse and unmapped coordinate gaps when processing highly fragmented, heterogeneous tabular feature arrays? This question investigates whether optimizing an approximate posterior distribution against an analytical normal prior allows a deep variational network to preserve sub-manifold continuity, whereas standard deterministic bottlenecks risk creating fragmented latent spaces that fail to generalize to shifted financial distributions.
+    \item \textbf{Second Research Question (RQ2):} To what extent does stochastic column-wise feature corruption preserve independent attribute marginal statistics, and how does this forcing mechanism affect the extraction of high-fidelity invariant representations within a purely deterministic hidden bottleneck layer? This question evaluates the mathematical validity of tabular swap noise as an online data augmentation technique, focusing on whether destroying joint feature correlations forces a deep denoising architecture to internalize robust multi-way feature dependencies without relying on probabilistic distributions.
+    \item \textbf{Third Research Question (RQ3):} Does the integration of unsupervised reconstruction metrics and compressed latent variables into downstream gradient-boosted decision tree ensembles significantly enhance discriminative performance at strict, recall-first operational decision boundaries under extreme class imbalance? This question addresses the operational utility of our hybrid stacking framework, assessing whether using deep autoassociative models as unsupervised feature-extraction engines provides a regularizing effect that prevents downstream tree-based classifiers from overfitting to minority noise.
+\end{itemize}
+
+\subsection{Experimental Requirements and Target Manifold Isolation}
+To provide valid empirical answers to these research questions, the experimental design imposes a strict set of structural and behavioral system requirements. Conventional deep learning paradigms frequently optimize model parameters using mixed data splits that contain both legitimate and fraudulent records simultaneously. Under extreme class imbalance, this approach causes the network to converge toward a biased majority-class solution. 
+
+To overcome this limitation, our experimental pipeline enforces Target Manifold Isolation as a fundamental requirement. The training partition must be filtered to exclude all fraudulent instances, leaving only legitimate account opening transactions. The data are partitioned strictly along the temporal axis based on decoded month integers: Months 0 to 5 serve as the training split, whereas Months 6 and 7 are reserved for out-of-time test evaluation to simulate realistic production deployment against unseen future adversarial behavior. The network optimization routine is evaluated using an objective function that acts exclusively on these legitimate transactions. 
+
+Mathematically, we define a training dataset $X_{leg}=\{x_{i}\}_{i=1}^{M}$ consisting of $M$ legitimate transaction vectors, where each sample $x_{i}\in\mathbb{R}^{D}$ represents a high-dimensional continuous or categorical attribution state. The network must project these vectors into a compressed coordinate bottleneck $z\in\mathbb{R}^{d}$ (where $d\ll D$) and subsequently minimize a reconstruction loss function computed relative to the original uncorrupted target input $x_{i}$. This operational constraint forces the hidden dense layer weights to learn a compact representation of the low-dimensional data manifold that contains legitimate consumer patterns. 
+
+The experimental system assumes that legitimate behaviors occupy a tight coordinate equilibrium space characterized by strong multi-feature regularities. Fraudulent vectors, whereas, represent highly chaotic, non-equilibrium anomalies that violate these established attribute alignments. During the out-of-time testing phase, when the model is exposed to an evaluation stream with a natural 1.10\% fraud prevalence rate, the trained autoassociative layers process both legitimate and fraudulent records without direct access to downstream target labels. Legitimate samples map seamlessly to the learned manifold coordinates, yielding low reconstruction errors. Fraudulent transactions, because they deviate from these multi-feature regularities, fail to map correctly to the hidden bottleneck coordinates, producing significantly higher reconstruction error profiles. This systematic error gap forms the foundation of our unsupervised feature engine, satisfying the structural requirements needed to address our core research questions.
+
+\section{Research Methodology (Theory) and Design}
+
+\subsection{Mathematical Foundations of Autoassociative Networks}
+The foundational architecture of unsupervised deep representation learning rests upon autoassociative neural networks, commonly designated as autoencoders. An autoencoder is a deterministically non-linear, connectionist neural framework designed to map an input feature vector to a lower-dimensional hidden bottleneck state and subsequently reconstruct an approximation of the original input at the output layer. Unlike traditional supervised learning algorithms that rely on external annotation labels to optimize network weights, autoencoders leverage self-supervised learning mechanics, utilizing the input data vectors themselves to serve as both the independent stimulus and the dependent optimization target. 
+
+Mathematically, we define an empirical dataset array $X=\{x_{i}\}_{i=1}^{M}$ consisting of $M$ observations, where each individual transaction sample $x_{i}\in\mathbb{R}^{D}$ represents a coordinate state within a $D$-dimensional continuous and categorical feature space. The internal operations of a standard autoassociative network are structurally partitioned into two symmetric, coupled functional transformations: an encoder network and a decoder network. 
+
+The encoder network defines a functional mapping operator, denoted as $f_{\phi}(\cdot)$, that projects the high-dimensional input vector $x$ into a compact, low-dimensional latent space or hidden bottleneck representation $z\in\mathbb{R}^{d}$, where the latent dimensionality $d$ is constrained such that $d\ll D$. This transformation maps the input space according to the following mathematical formulation:
+
+\begin{equation}
+z=f_{\phi}(x)=\sigma(W_{e}x+b_{e})
+\end{equation}
+
+In this equation, $W_{e}\in\mathbb{R}^{d\times D}$ represents the dense weight projection tensor of the encoder layers, $b_{e}\in\mathbb{R}^{d}$ denotes the associated layer bias vector, $\phi=\{W_{e},b_{e}\}$ encapsulates the collective parameter set of the encoder subsystem, and $\sigma(\cdot)$ defines an elemental, non-linear activation function. Conversely, the decoder network defines a mirroring functional mapping operator, denoted as $g_{\theta}(\cdot)$, that accepts the compressed latent variable $z$ from the hidden bottleneck and maps it back into the original $D$-dimensional coordinate space to produce a reconstructed feature approximation vector $\hat{x}\in\mathbb{R}^{D}$. This reconstruction transformation is mathematically formulated as follows:
+
+\begin{equation}
+\hat{x}=g_{\theta}(z)=\sigma(W_{d}z+b_{d})
+\end{equation}
+
+In this expression, $W_{d}\in\mathbb{R}^{D\times d}$ represents the dense weight projection tensor of the decoder layers, $b_{d}\in\mathbb{R}^{D}$ denotes the associated decoder layer bias vector, $\theta=\{W_{d},b_{d}\}$ encapsulates the collective parameter set of the decoder subsystem, and $\sigma(\cdot)$ represents the output layer non-linear activation function. 
+
+The optimization routine of the autoassociative network involves updating the parameter sets to minimize a scalar reconstruction loss function, denoted as $\mathcal{L}_{AE}(x,\hat{x})$, across the collective training partition data. When the underlying feature dimensions are continuous and normalized, the empirical risk minimization objective is typically evaluated via a Mean Squared Error (MSE) loss formulation:
+
+\begin{equation}
+\mathcal{L}_{AE}(\phi,\theta)=\frac{1}{M}\sum_{i=1}^{M}||x_{i}-g_{\theta}(f_{\phi}(x_{i}))||^{2}
+\end{equation}
+
+While this deterministic formulation functions effectively for basic compression tasks, standard autoencoders exhibit a critical structural limitation that renders them highly vulnerable when applied to sparse tabular data. If the network capacity is unconstrained, or if the latent bottleneck dimension $d$ approaches or exceeds the input dimension $D$, the optimization trajectory can converge toward a trivial identity mapping where $f(x)=x$. Under these conditions, the neural layers do not extract meaningful structural dependencies, cross-attribute alignments, or sub-manifold topologies; instead, the weights merely memorize individual data coordinates. The data are thus passed through the network without any regularizing constraints, causing the model to preserve random noise variations alongside true patterns. 
+
+This lack of generalization performance motivates the advanced structural modifications explored in subsequent sections of this chapter. Specifically, we implement Denoising Autoencoders [67] to introduce marginal-preserving stochastic input corruption, whereas Variational Autoencoders [66] are deployed to enforce continuous probabilistic distributions over the latent space, preventing identity collapse and ensuring robust manifold learning.
+
+\subsection{Denoising Autoencoders (DAEs) and Marginal-Preserving Tabular Corruption}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{DAE_Archeticture_1.png}
+    \caption{Denoising Autoencoder Architecture with Stochastic Swap Noise Injection. The diagram illustrates the Encoder and Decoder dense stacks mapping the corrupted vector through a 12-dimensional latent bottleneck.}
+    \label{fig:dae_arch}
+\end{figure}
+
+To bypass the identity memorization trap common in unconstrained bottleneck architectures, we introduce the Denoising Autoencoder (DAE) framework [67] as our primary deterministic manifold regularizer. The structural objective of a denoising network modifies the standard autoassociative training path. Instead of optimizing the parameters to map an identical feature vector back to itself, the model is trained to reconstruct the original, clean, pristine input vector $x\in\mathbb{R}^{D}$ from a stochastically corrupted version $\tilde{x}\in\mathbb{R}^{D}$ that has been passed through a degradation process. This architectural configuration forces the encoder layers to discover robust multi-way feature relationships, feature co-occurrences, and topological constraints to reverse the injected surface corruption, preventing the hidden layers from converging toward a trivial identity function.
+
+In computer vision or sequential signal domains, stochastic input corruption is typically achieved by adding additive white Gaussian noise or applying binary zero-masking dropout layers. However, applying additive Gaussian noise directly to heterogeneous tabular banking records alters the underlying data boundaries and generates invalid feature state representations. Financial datasets contain a mixture of continuous metrics, ordinal scales, and discrete binary operational flags. Injecting continuous Gaussian variations into a binary flag (such as \texttt{email\_is\_free} or \texttt{foreign\_request}) generates uninterpretable fractional values, whereas adding noise to heavily skewed continuous attributes (such as \texttt{intended\_balcon\_amount} or \texttt{velocity\_6h}) distorts the base metrics without reflecting realistic behavioral changes. 
+
+To preserve the statistical boundaries of the dataset, we implement column-wise Tabular Swap Noise as our online data augmentation mechanism. Let $x=[x_{1},x_{2},...,x_{D}]$ be an individual transaction vector sampled from the empirical data matrix $X$. For each attribute coordinate dimension $j\in\{1,2,...,D\}$, a stochastic mask variable $m_{j}\sim Bernoulli(\alpha)$ is sampled independently, where $\alpha\in[0,1]$ represents the corruption hyperparameter. Our pipeline sets this corruption parameter to exactly 0.15, meaning that each transaction feature faces a 15.00\% probability of undergoing swap corruption. The mathematical transformation defining the swap noise mapping is formulated as follows:
+
+\begin{equation}
+\tilde{x}_{j}=(1-m_{j})x_{j}+m_{j}\cdot x_{j}^{*}
+\end{equation}
+
+In this expression, $x_{j}^{*}$ represents an attribute value sampled at random from the empirical marginal distribution $\hat{P}_{j}(X_{j})$ of the exact same $j$-th feature channel across an entirely different, independent transaction record within the training partition. This corruption method provides a key mathematical advantage: by swapping values strictly within their designated columns, it alters the joint multi-feature correlations across attributes, whereas it leaves the independent, univariable marginal feature distributions completely unchanged. The model cannot minimize its error by relying on localized, axis-aligned shortcuts; instead, it must internalize the global manifold structure to successfully reconstruct the uncorrupted values. 
+
+The network architecture is built using a deep, symmetric deterministic configuration across Keras dense layers. The input projection layer consumes the 53-dimensional post-engineered tabular vector produced by our preprocessing pipeline. The data pass sequentially through a dense encoder stack consisting of a 128-unit fully connected layer and a 64-unit fully connected layer. Each encoder layer is regularized using Batch Normalization and a LeakyReLU activation function configured with a negative slope parameter of exactly 0.20. This pipeline maps the data down to a tight, 12-dimensional deterministic latent bottleneck layer $z$, which uses a LeakyReLU activation function to form a compact coordinate equilibrium space. 
+
+Conversely, the decoder network maps the latent vector $z$ back into the original input dimension space. It mirrors the encoder structure exactly, passing representations through a 64-unit dense layer and a 128-unit dense layer before reaching a final 53-unit linear projection output layer to generate the reconstructed vector. Crucially, the parameter optimization routine is evaluated using an objective function that isolates the corruption stage. While the encoder receives the corrupted vector $\tilde{x}$, the Mean Squared Error (MSE) loss function is computed exclusively between the decoder output $\hat{x}$ and the clean, pristine input vector $x$:
+
+\begin{equation}
+\mathcal{L}_{DAE}(\phi,\theta)=\frac{1}{53}\sum_{j=1}^{53}(x_{j}-\hat{x}_{j})^{2}
+\end{equation}
+
+This formulation ensures that the target loss optimization isolates the corrupted features, forcing the network to discover invariant multi-way dependencies to successfully reconstruct the uncorrupted attributes.
+
+\subsection{Variational Autoencoders (VAEs) and Probabilistic Manifold Topologies}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{vae_archeticutre_2.png}
+    \caption{Expanded Hybrid Fraud Detection Model combining a Gaussian Beta-VAE with a tuned Logistic Regression Meta-Classifier.}
+    \label{fig:vae_hybrid_model}
+\end{figure}
+
+While the Denoising Autoencoder constructs a deterministic mapping to navigate input corruption, the Variational Autoencoder (VAE) [66] formalizes representation learning within a probabilistic frame. Tabular banking records and cyberfraud profiles are often highly fractured, meaning that minute variations in consumer transactional parameters can separate a legitimate transaction from an active fraud vector. Deterministic autoencoders lack regularized latent space representations, which can lead to fragmented coordinates where unmapped gaps appear between clusters. When high intra-class variance characterizes the non-fraudulent population, a deterministic encoder maps inputs to discrete, disjoint coordinates on the latent manifold, failing to capture the underlying continuous probability density function. 
+
+To resolve this limitation, we implement a custom Tabular Variational Autoencoder archetype. VAEs replace discrete latent codes with full probability distributions, transforming the bottleneck zone into a continuous equilibrium topology. We define a prior probability distribution over the latent variables, denoted as $p(z)$, which follows a standard multivariate Gaussian prior distribution: $p(z)=\mathcal{N}(0,I)$. The generative decoding pipeline assumes that observed transaction records are generated by a distribution conditioned on these latent variables, denoted as $p_{\theta}(x|z)$. Because computing the true posterior distribution $p(z|x)$ is analytically intractable under non-linear deep transformations, we introduce an approximate recognition encoder network, denoted as $q_{\phi}(z|x)$, to estimate the distribution profile:
+
+\begin{equation}
+q_{\phi}(z|x)=\mathcal{N}(z;\mu_{z}(x),\Sigma_{z}(x))
+\end{equation}
+
+In our custom tabular architecture, the encoder network processes a 41-dimensional post-engineered input vector $x\in\mathbb{R}^{41}$. The tensor expands sequentially through dense, fully connected layers consisting of 64 and 32 hidden units using Rectified Linear Unit (ReLU) activations. Instead of projecting to a single bottleneck code, the hidden layers branch into two separate fully connected coordinate projections to map the statistics of the latent distribution. These projections define a 4-dimensional mean vector head, denoted as $\mu_{z}\in\mathbb{R}^{4}$, and a 4-dimensional log-variance coordinate head, denoted as $log~\sigma_{z}^{2}\in\mathbb{R}^{4}$. To ensure numerical stability and prevent arithmetic overflow during subsequent exponential operations, the log-variance head is strictly bounded within a fixed envelope using a custom clipping constraint: $log~\sigma_{z}^{2}=\text{clip}(log~\sigma_{z}^{2},-10.0,10.0)$. 
+
+\subsubsection*{The Reparameterization Trick}
+Because sampling a latent code $z$ directly from the approximate posterior distribution $q_{\phi}(z|x)$ introduces a non-differentiable stochastic node, standard backpropagation through the network is broken, preventing the calculation of parameter gradients. To circumvent this limitation, we apply the Reparameterization Trick. We isolate the stochastic element by sampling an independent noise variable, denoted as $\epsilon$, from a standard multivariate Gaussian distribution: $\epsilon\sim\mathcal{N}(0,I)$. The continuous latent embedding variable $z\in\mathbb{R}^{4}$ is then expressed as a deterministic, differentiable transformation combining the encoder statistics with this noise term:
+
+\begin{equation}
+z=\mu_{z}+\epsilon\odot \exp(0.5\cdot log~\sigma_{z}^{2})
+\end{equation}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\textwidth]{VAE_System_Topology_3.jpg}
+    \caption{The Stochastic Reparameterization Node shifting variance to an independent Gaussian noise element.}
+    \label{fig:reparam}
+\end{figure}
+
+In this expression, $\odot$ represents an element-wise Hadamard multiplication operator. This formulation shifts the stochastic variance to the external noise vector $\epsilon$, allowing the gradients to flow uninterrupted through the deterministic coordinates of $\mu_{z}$ and $log~\sigma_{z}^{2}$ during the backward optimization pass.
+
+\subsubsection*{Mathematical Loss Derivation and the Evidence Lower Bound}
+The optimization objective of our custom Variational Autoencoder maximizes the Evidence Lower Bound (ELBO), which is equivalent to minimizing the negative log-likelihood balanced by a distribution regularization term. We introduce a scaling parameter $\beta$ to control the regularization strength, balancing reconstruction quality against latent distribution structure:
+
+\begin{equation}
+\mathcal{L}_{VAE}(\phi,\theta)=\mathcal{L}_{NLL}(\theta)+\beta\cdot\mathcal{L}_{KL}(\phi)
+\end{equation}
+
+The first term, $\mathcal{L}_{NLL}(\theta)$, defines the Negative Log-Likelihood of the reconstructed features. Instead of evaluating reconstruction errors using uncalibrated Mean Squared Error, our decoder models feature-level variances to accommodate differing continuous scales across banking attributes. The sampled latent representation $z$ maps back through a mirroring network structure of 32 and 64 hidden dense units with ReLU activations. The output layer projects a dense vector of size $2\times input\_dim$ to estimate both the reconstruction mean vector $(\mu_{x})$ and the reconstruction log-variance vector $(log~\sigma_{x})$ for each engineered tabular feature. To maintain optimization stability, the log-variance values are clipped within a tight range: $log~\sigma_{x}\in[-7.0,7.0]$. The feature variance is computed as follows:
+
+\begin{equation}
+\sigma_{x,i}^{2}=\exp(2.0\cdot log~\sigma_{x,i})+10^{-8}
+\end{equation}
+
+The Negative Log-Likelihood objective function is formulated as:
+
+\begin{equation}
+\mathcal{L}_{NLL}(\theta)=\sum_{i=1}^{D}\left[\frac{0.5\cdot(x_{i}-\mu_{x,i})^{2}}{\sigma_{x,i}^{2}}+log~\sigma_{x,i}\right]
+\end{equation}
+
+The second term, $\mathcal{L}_{KL}(\phi)$, measures the Kullback-Leibler Divergence between the approximate posterior distribution $q_{\phi}(z|x)$ and the standard Gaussian prior $p(z)$. This term penalizes spatial fragmentation and pulls the latent representations toward a unified equilibrium space. Assuming a $d$-dimensional latent space, this divergence is integrated analytically as:
+
+\begin{equation}
+\mathcal{L}_{KL}(\phi)=-0.5\sum_{j=1}^{d}\left(1+log~\sigma_{z,j}^{2}-\mu_{z,j}^{2}-\exp(log~\sigma_{z,j}^{2})\right)
+\end{equation}
+
+By minimizing the collective loss $\mathcal{L}_{VAE}$, the network ensures that the data are mapped to a smooth, continuous latent space, avoiding posterior collapse and enabling robust unsupervised anomaly detection.
+
+\subsection{Information Fusion Hybridization and Downstream Stacking Loops}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{vae_hybrid_4.png}
+    \caption{Information Fusion Hybridization Pipeline routing unsupervised features into downstream classifiers.}
+    \label{fig:fusion_hybrid}
+\end{figure}
+
+While standalone unsupervised architectures provide theoretical depth by mapping the low-dimensional distribution manifolds of legitimate transactions, their direct deployment as binary classification networks under intense operational environments faces structural limitations. Empirical validation demonstrates that standalone reconstruction metrics generate uncalibrated anomaly score distributions. These raw scores struggle to differentiate highly non-linear, adversarial fraud variations from high-variance legitimate consumer behaviors, which often manifest as surface-level anomalies without indicating malicious intent. Conversely, standard supervised tree ensembles are highly capable of mapping complex cross-attribute interactions, yet they overfit to minority class noise variations when exposed to extreme tabular imbalances. 
+
+To bridge this performance gap, we design an advanced multi-stage Information Fusion Hybrid Stacking Pipeline. This architectural configuration transforms our deep autoassociative networks into unsupervised feature-extraction engines, combining their learned latent space representations and localized reconstruction error anomalies with robust supervised tree-based meta-classifiers. The information fusion hybridization process begins by feeding the post-engineered, 53-dimensional raw transactional vector $x\in\mathbb{R}^{53}$ simultaneously into the trained deep autoassociative network layers. Instead of relying on a single global anomaly score, the framework executes a multi-way extraction routine to decompose the data vector into three distinct, highly informative feature categories:
+
+\begin{itemize}
+    \item \textbf{Compressed Latent Space Coordinates ($z$):} The output of the central bottleneck layer maps the smooth positioning coordinates of the transaction directly on the low-dimensional data manifold. For the deterministic DAE network, this yields a 12-dimensional continuous vector $z_{DAE}\in\mathbb{R}^{12}$. This vector summarizes the global structural properties of the transaction, stripped of superficial tabular noise.
+    \item \textbf{Element-Wise Absolute Reconstruction Errors ($E_{abs}$):} The system computes the coordinate-wise mathematical difference between the original input features and the linear decoder layer output reconstructions. This transformation generates a 53-dimensional feature-level attention array:
+    
+    \begin{equation}
+    E_{abs}=|x-\hat{x}|=[|x_{1}-\hat{x}_{1}|,|x_{2}-\hat{x}_{2}|,...,|x_{53}-\hat{x}_{53}|]
+    \end{equation}
+    
+    This array explicitly isolates exactly which continuous or categorical behavioral parameters deviate from typical consumer habits, exposing fine-grained behavioral anomalies directly to downstream layers.
+    \item \textbf{Global Reduction Anomaly Scores (MSE):} The row-wise scalar Mean Squared Error reduction condenses the entire reconstruction error manifold into a single, global index of transactional divergence:
+    
+    \begin{equation}
+    MSE_{Global}=\frac{1}{53}\sum_{j=1}^{53}(x_{j}-\hat{x}_{j})^{2}
+    \end{equation}
+\end{itemize}
+
+Once extracted, these unsupervised representations are routed into a central Matrix Vector Concatenation Hub. This hub merges the original raw features with the new autoassociative streams. For the DAE pipeline, this operation expands the initial data space into an enriched, 119-dimensional tensor representation, mathematically formulated as follows:
+
+\begin{equation}
+X_{Enriched}=[x||z_{DAE}||E_{abs}||MSE_{Global}]\in\mathbb{R}^{119}
+\end{equation}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Hybrid_Stacking_5.jpg}
+    \caption{Matrix Vector Concatenation Hub architecture merging representations with raw parameters.}
+    \label{fig:concat_hub}
+\end{figure}
+
+This expanded, 119-dimensional vector space is then processed through an advanced data augmentation stage to manage the severe class skew. Legitimate consumer behaviors form a dense, high-volume cluster, whereas fraudulent transactions occupy sparse, isolated coordinate vectors within the unit hypercube. To prevent downstream supervised models from converging exclusively toward the majority population, the matrix is processed using the Synthetic Minority Over-sampling Technique (SMOTE) [70]. SMOTE identifies the k-nearest neighbors for each sparse fraud coordinate within the 119-dimensional space, selects a random neighbor, and synthesizes new, continuous minority transaction vectors along the line segments joining the coordinates. This process creates a mathematically balanced tensor space without replicating identical records, avoiding overfitting. 
+
+This balanced, regularized representation space is then passed to the final Downstream XGBoost Classifier Meta-Learner [68]. XGBoost builds sequential gradient-boosted decision trees to optimize final fraud probability assignments. Because the input features include explicit reconstruction error metrics, the decision trees do not need to construct deep, fragile logic rules using raw attributes. Instead, the root nodes can split directly on the pre-amplified absolute error features, significantly regularizing the model and preventing overfitting to minority noise.
+
+A parallel information fusion configuration is engineered for our custom Variational Autoencoder pipeline, leveraging score-level stacking to exploit its probabilistic properties. During out-of-fold validation loops, the trained VAE processes tabular feature slices to extract an integrated unsupervised score stream:
+
+\begin{equation}
+Score_{VAE}=\mathcal{L}_{NLL}+\alpha\cdot\mathcal{L}_{KL}
+\end{equation}
+
+In this configuration, the hyperparameter $\alpha$ is locked to exactly 4.00 to emphasize structural distribution compliance. This continuous score is concatenated alongside the base feature coordinates to train an ensemble of diverse Level-0 classifiers, which includes Logistic Regression models to map linear baseline signals, and specialized LightGBM [69] and XGBoost [68] tree configurations to capture non-linear feature interactions. The continuous probability outputs from these Level-0 architectures are normalized to Z-scores and routed to a Level-1 Meta Logistic Regression classifier. This meta-classifier computes the final fraud probability distribution inference, adjusting decision boundaries to achieve stable fraud isolation under severe data imbalance.
+
+\section{Deep Feature Space Interaction and Regularization Analysis}
+
+\subsection{Decision Tree Partitioning Under Extreme Class Imbalance}
+To understand the technical utility of our unsupervised feature-extraction layer, we must first analyze the structural failure modes of standard tree-based learning algorithms when they are exposed to extreme tabular class imbalances. Supervised tree-based ensembles, such as standard XGBoost [68] and LightGBM [69] models, construct discriminative decision hyperplanes by recursively partitioning individual feature dimensions based on purity optimization metrics, including Shannon Information Gain and Gini Impurity. In a binary classification setting, the Gini Impurity $I_{G}(p)$ of a node processing a probability distribution of classes is mathematically formulated as follows:
+
+\begin{equation}
+I_{G}(p)=1-\sum_{k=0}^{1}p_{k}^{2}=1-(p_{0}^{2}+p_{1}^{2})
+\end{equation}
+
+Within the NeurIPS 2022 Bank Account Fraud (BAF) base dataset [62, 63], the empirical prior probability distribution of the legitimate majority class $p_{0}$ is exactly 0.9890, whereas the fraudulent minority class probability $p_{1}$ represents a mere 0.0110. If a decision tree algorithm attempts to optimize split boundaries directly on this highly skewed coordinate distribution, the optimization trajectory experiences structural instability. Because the majority population constitutes 98.90\% of the independent data rows, any initial axis-aligned split that isolates a large block of legitimate transactions will yield an exceptionally low impurity score, minimizing the global optimization risk without successfully isolating the minority fraud manifold. 
+
+Consequently, the minor fraud vectors hide within localized, high-variance noise variations of the continuous attributes, such as minor fluctuations in \texttt{velocity\_24h} or \texttt{intended\_balcon\_amount\_log}. To capture these deeply embedded fraud records, tree-based models are forced to execute highly localized, recursive partitions. The algorithm splits the continuous feature coordinates repeatedly, growing deep, fragile, and highly complex tree branches to isolate individual minority rows. While this deep partitioning allows the model to achieve a high training accuracy, it causes severe overfitting to sparse, unrepresentative noise. When the model is subsequently deployed in a production setting characterized by adversarial adaptation or cross-version data shifts, these deep, localized branches fail to generalize. The model experiences a significant degradation in performance because its axis-aligned hyperplanes are mapped tightly to historical training noise, completely missing the newly shifted behavioral patterns of adaptive fraud networks.
+
+\subsection{The Stochastic Forcing Regularizer Mechanics}
+The integration of our deep autoassociative feature-extraction layer directly resolves these structural vulnerabilities by acting as a powerful multi-feature regularizer before any decision tree partitions are calculated. As detailed in our methodology, the Denoising Autoencoder introduces an online data augmentation scheme via column-wise tabular swap noise. By stochastically replacing 15.00\% of the feature values within a given transaction with values drawn from the empirical marginal distributions of alternative rows, the swap noise completely destroys the joint multi-way feature correlations, whereas it leaves the independent univariable column-wise marginal statistics uncorrupted. 
+
+This stochastic corruption process alters the optimization landscape for the encoder network layers. The model cannot minimize its target reconstruction error by relying on localized, axis-aligned shortcuts or individual feature thresholds, because any single column may contain corrupted data. Instead, the network is forced to learn the global, underlying structural dependencies and cross-attribute alignments that define the legitimate consumer manifold. To reverse the injected swap noise, the hidden dense layers must construct complex, non-linear feature combinations, mapping the fragmented input fields to a smooth, low-dimensional coordinate equilibrium space. 
+
+The resulting compressed latent variables $z\in\mathbb{R}^{12}$ capture robust, invariant multi-feature relationships that are difficult for individual axis-aligned decision tree splits to isolate when operating on raw data. When these latent embeddings are passed downstream to the gradient boosting layers, they transform the optimization task. Instead of struggling to untangle complex dependencies from raw continuous parameters, the downstream tree-based models can immediately partition these pre-computed latent manifold coordinates. This structural pre-conditioning simplifies the required splitting logic, preventing the decision trees from growing excessively deep and regularizing the entire pipeline against cross-version distribution shifts.
+
+\subsection{Element-Wise Absolute Errors as Feature Attention Mechanisms}
+In addition to the latent space embeddings, the absolute element-wise reconstruction error vector $E_{abs}=|x-\hat{x}|$ introduces an informative structural transformation that regularizes the downstream meta-learners. Because our autoassociative networks isolate their training loops exclusively to non-fraudulent, legitimate transaction profiles, the weight parameters internalize only the structural attributes of clean consumer behavior. Legitimate data records map smoothly to the learned manifold coordinates, yielding uniformly low reconstruction errors across all feature channels. Conversely, when a fraudulent transaction vector is passed through the model, its anomalous feature alignments violate the internalized cross-attribute regularities. The decoder network fails to accurately reconstruct these unfamiliar feature combinations, generating disproportionately high reconstruction errors in the specific columns where the deviations occur. 
+
+This error generation process acts as a localized, feature-level attention mechanism that exposes anomalous variations directly to downstream models. Mathematically, if a fraud vector exhibits an unusually high velocity over a 24-hour window combined with a low income percentile, the raw parameters might look typical when analyzed independently by shallow decision tree splits. However, the autoencoder maps these columns jointly; because their concurrent state violates typical consumer patterns, the model outputs an amplified error value in the corresponding coordinate of $E_{abs}$. 
+
+When the downstream XGBoost meta-learner constructs its gradient-boosted trees over this enriched feature space, its optimization path is altered. Instead of performing a deep grid search across multiple raw features to discover a hidden fraud correlation, the algorithm can select these pre-amplified absolute error features near its root split nodes. This feature attention mechanism guides the tree-building process, allowing the meta-learner to isolate fraudulent behavior patterns using fewer, more meaningful partitions. By preventing the trees from growing to extreme depths, this information fusion hybridization restricts the model from memorizing training-set noise, optimizing its ability to maintain high generalization performance under real-world business constraints.
+
+\section{Concrete Experimental Environment Setup}
+
+\subsection{Materials and Benchmark Dataset Demographics}
+The empirical validation of the proposed unsupervised representation learning framework relies on the NeurIPS 2022 Bank Account Fraud (BAF) Dataset Suite [62]. The BAF suite represents a large-scale, privacy-preserving, and realistic tabular benchmark designed to evaluate machine learning architectures under strict financial engineering constraints. The underlying data are derived from an anonymized real-world dataset comprising online banking account applications. To ensure client anonymity, the original proprietary records were treated with differential privacy mechanisms and feature encoding operations. Subsequently, a Conditional Generative Adversarial Network (CTGAN) was trained on the secured source matrix to synthesize an artificial tabular dataset that preserves the multi-dimensional feature correlations and adversarial attack patterns of actual bank fraud networks. 
+
+The base dataset contains exactly 1,000,000 instances, characterized by an extreme class imbalance where the positive fraud target label occurs at a prevalence rate of 1.10\%, whereas legitimate records constitute the remaining 98.90\% majority share. To evaluate the robustness of our models against distribution shifts and demographic inequalities, our experiments leverage Variant I of the BAF suite. Variant I eliminates the baseline fraud prevalence disparity across demographics by fixing the fraud rate uniformly at 1.10\%. However, it introduces severe group size disparity by artificially shrinking the minority demographic group to constitute only 10.00\% of the dataset rows. This configuration tests the network's capacity to extract generalized sub-manifold characteristics under severe data underrepresentation. 
+
+The asset schema incorporates 30 distinct attributes capturing static identity metrics, spatial anomalies, and dynamic behavioral velocities across an operational evaluation window. The feature dictionary partitions these columns into three distinct topologies:
+
+\begin{itemize}
+    \item \textbf{Continuous and Numerical Features:} This category includes 17 continuous and discrete variables mapping normalized financial values (\texttt{income}, \texttt{proposed\_credit\_limit}), biographical data (\texttt{customer\_age}), and behavioral velocity metrics tracking application frequency intervals (\texttt{velocity\_6h}, \texttt{velocity\_24h}, \texttt{velocity\_4w}).
+    \item \textbf{Categorical Features:} This group encapsulates five discrete nominal variables encoded as strings or structural category integers, specifically \texttt{payment\_type}, \texttt{employment\_status}, \texttt{housing\_status}, \texttt{source}, and \texttt{device\_os}.
+    \item \textbf{Binary and Outlier Flags:} The final topology encompasses 13 boolean indicators used to expose anomalous behavioral vectors common in synthetic identity fraud, such as operational markers (\texttt{has\_other\_cards}, \texttt{foreign\_request}) and algorithmic outlier warnings applied to metric distributions (\texttt{zip\_count\_4w}, \texttt{days\_since\_request}).
+\end{itemize}
+
+\subsection{Pre-processing Pipeline and Cardinality Compression}
+To condition the heterogeneous BAF attributes for deep autoassociative neural network layers, a rigorous multi-stage data engineering pipeline is executed. The pre-processing workflow is designed under a strict data leakage constraint: all parameter estimators, scaling indices, and imputation rules are fitted exclusively on the training partition (Months 0-5) and applied blindly to the out-of-time test partition (Months 6-7). The pipeline progresses through six sequential phases:
+
+\begin{enumerate}
+    \item \textbf{Data Sanitation:} The zero-variance feature column \texttt{device\_fraud\_count} is dropped unconditionally because it carries no discriminative signal. Furthermore, six columns are identified as masking missing records using a sentinel value of -1. These sentinel markers are replaced with IEEE NaN values to make missingness structurally explicit. For \texttt{prev\_address\_months\_count} and \texttt{bank\_months\_count}, where the absence of a history carries high behavioral predictive value, binary missingness indicator flags are engineered (e.g., \texttt{bank\_months\_count\_flag}) and appended as independent attributes before imputation occurs.
+    \item \textbf{Missing Value Imputation:} For columns with moderate missingness rates, a multivariate Iterative Imputer utilizing an inner Bayesian Ridge regressor is fitted on a stratified random subsample of 50,000 rows to preserve multi-feature correlations. For columns displaying severe missingness, a distribution-preserving bootstrap imputation technique is executed by sampling with replacement from observed univariable distributions, preserving multi-modality and heavy tails.
+    \item \textbf{Outlier Detection and Treatment:} Outliers are detected using the standard interquartile range (IQR) fence criterion. Severe positive skew columns (\texttt{intended\_balcon\_amount}, \texttt{bank\_branch\_count\_8w}, \texttt{proposed\_credit\_limit}) are transformed via a smooth $\log(1+x)$ mapping to bring extreme values within a linear range, whereas moderate outlier distributions are treated by appending a binary \texttt{\_is\_outlier} flag column.
+    \item \textbf{Intermediate Scaling:} A RobustScaler centers continuous features by their median and scales them by the IQR, rendering the network insensitive to retained extreme variations.
+    \item \textbf{Chronological Partitioning:} The dataset is partitioned strictly along the temporal axis based on decoded month integers. Months 0 to 5 constitute the training split ($N = 753,169$ rows), whereas Months 6 and 7 are reserved for out-of-time test evaluation ($N = 246,831$ rows).
+    \item \textbf{Final Vectorization and Normalization:} Categorical features are one-hot encoded using \texttt{drop\_first=True} to eliminate the reference categories and prevent the dummy variable trap from introducing perfect multicollinearity. To satisfy the inputs of the VAE and DAE layers, a MinMaxScaler scales continuous dimensions to the unit interval $[0, 1]$. To prevent sparse over-parameterization in the encoder projection layers, rare categorical variants within \texttt{housing\_status} and \texttt{employment\_status} are collapsed into unified indicators labeled \texttt{OTHER\_HOUSING} and \texttt{OTHER\_Employment} respectively.
+\end{enumerate}
+
+The final post-engineered matrix yields an input dimensionality of $D=53$ features for the DAE model.
+
+\subsection{Hyperparameter Optimization Architecture Matrix}
+To guarantee reproducible training trajectories and stable convergence across both deep autoassociative network archetypes, hyperparameter optimization sweeps were conducted. The learning rate parameters, optimization paths, and early stopping boundaries were carefully calibrated to prevent latent representation collapse while maintaining computational efficiency.
+
+\begin{table}[htbp]
+\centering
+\caption{Hyperparameter Optimization Architecture Matrix}
+\begin{tabular}{@{}p{4cm} p{4cm} p{4cm}@{}}
+\toprule
+\textbf{Optimization Hyperparameter} & \textbf{Variational Autoencoder (VAE) Specification} & \textbf{Denoising Autoencoder (DAE) Specification} \\
+\midrule
+Base Optimization Algorithm & Adam (Adaptive Moment Estimation) & Adam (Adaptive Moment Estimation) \\
+Initial Learning Rate ($\alpha$) & 0.001 (Fixed Coefficient) & 0.001 (Fixed Coefficient) \\
+Mini-Batch Capacity ($B$) & 256 Samples per Iteration & 256 Samples per Iteration \\
+Maximum Epoch Horizon & 50 Allocation Iterations & 100 Allocation Iterations \\
+Early Stopping Constraints & Validation Loss Monitoring, Patience = 5 & Validation Loss Monitoring, Patience = 10 \\
+Hidden Layer Topology & $64 \rightarrow 32 \rightarrow 4 \rightarrow 32 \rightarrow 64$ & $128 \rightarrow 64 \rightarrow 12 \rightarrow 64 \rightarrow 128$ \\
+Regularization Modality & KL Divergence Penalty ($\beta = 0.015$) & Tabular Swap Noise ($\alpha = 0.150$) \\
+\bottomrule
+\end{tabular}
+\label{tab:hyperparam_matrix}
+\end{table}
+
+\section{Comparative Empirical Results and Critical Evaluation}
+
+\begin{figure}[htbp]
+    \centering
+    % Top row
+    \includegraphics[width=0.48\textwidth]{result_grid_1.png}
+    \hfill
+    \includegraphics[width=0.48\textwidth]{result_grid_2.png}
+    
+    \vspace{0.5cm} 
+    
+    % Bottom row
+    \includegraphics[width=0.48\textwidth]{result_grid_3.png}
+    \hfill
+    \includegraphics[width=0.48\textwidth]{result_grid_4.png}
+    
+    \caption{Model Performance Evaluation metrics detailing the precision/recall trade-offs, confusion matrices, and ROC-AUC curves at the fixed 5.00\% FPR operational threshold.}
+    \label{fig:model_eval_roc}
+\end{figure}
+
+\subsection{The Deceptive Properties of Global Receiver Operating Metrics}
+In evaluating deep architectures under severe tabular class distributions, our research establishes that global Receiver Operating Characteristic Area Under the Curve (ROC-AUC) measurements provide a deceptive reflection of true operational security infrastructure. The mathematical formulation of the True Positive Rate (TPR) and the False Positive Rate (FPR) plotted across the ROC curve reveals a critical structural vulnerability when applied to heavily skewed databases. The False Positive Rate is defined as follows:
+
+\begin{equation}
+FPR=\frac{FP}{FP+TN}
+\end{equation}
+
+Within Variant I of the NeurIPS Bank Account Fraud (BAF) suite, the legitimate majority population contains exactly 989,000 instances, whereas the fraudulent minority population is restricted to 11,000 instances. Because the denominator of the FPR equation is governed by the True Negative (TN) parameter---which represents the vast majority class---a model can misclassify thousands of legitimate banking customers as fraudsters without significantly altering the global FPR metric. 
+
+For example, if the network generates 49,450 false alerts on clean accounts, the calculated FPR remains bounded at approximately 5.00\%. However, because the total volume of true fraud instances is only 11,000, generating 49,450 false alerts results in an operational disaster where false positives outnumber true positives by nearly five to one. This structural imbalance causes the precision profile to collapse, whereas the global ROC-AUC metric remains highly optimistic, often exceeding 0.8500. Consequently, global ROC-AUC can hide a high volume of false alerts, which would cause widespread account freezing for legitimate users in a live banking environment. 
+
+To ensure academic and operational rigor, our evaluation framework subordinates global curves to strict, recall-first precision metrics analyzed at a rigid, institutionally mandated 5.00\% False Positive Rate operating threshold.
+
+\subsection{Systematic Performance Consolidation}
+To evaluate the performance of our unsupervised feature-extraction engines against traditional supervised approaches, a comprehensive benchmarking sweep was conducted across multiple modeling paradigms. The data are consolidated below to contrast pure unsupervised baselines, standalone supervised tree algorithms, and the proposed hybrid ensembling frameworks.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparative Empirical Results across Baselines and Proposed Frameworks}
+\begin{tabular}{@{}p{3cm} p{3.5cm} c c c@{}}
+\toprule
+\textbf{Model Paradigm Identifier} & \textbf{Applied Model Architecture} & \textbf{Global ROC-AUC Metric} & \textbf{Operational TPR at \textasciitilde 5.00\% FPR} & \textbf{Operational Precision at \textasciitilde 5.00\% FPR} \\
+\midrule
+Unsupervised Baseline & Pure VAE (Standalone) & 0.5501 & 0.0994 (9.94\%) & 0.0200 (2.00\%) \\
+Unsupervised Baseline & Pure DAE (Standalone) & 0.5210 & 0.0630 (6.30\%) & 0.0130 (1.30\%) \\
+Supervised Baseline & Standalone LightGBM Classifier & 0.8420 & 0.4110 (41.10\%) & 0.0900 (9.00\%) \\
+Supervised Baseline & Standalone XGBoost Classifier & 0.8510 & 0.4350 (43.50\%) & 0.1010 (10.10\%) \\
+Proposed Hybrid Stacking & Advanced DAE-XGBoost Pipeline & 0.8752 & 0.4980 (49.80\%) & 0.1180 (11.80\%) \\
+Proposed Hybrid Stacking & Stacked VAE-Tree Ensemble & 0.8868 & 0.5299 (52.99\%) & 0.1300 (13.00\%) \\
+\bottomrule
+\end{tabular}
+\label{tab:empirical_results}
+\end{table}
+
+\subsection{VAE Continuous Latent Embedding Performance Evaluation}
+The empirical data consolidated in Table 3.2 demonstrate that the pure, standalone Variational Autoencoder yields a low global ROC-AUC of 0.5501 and a True Positive Rate of only 9.94\% when evaluated as an isolated classifier. This performance deficit is an expected structural characteristic of unsupervised training regimes. Because the VAE loss function optimizes the Evidence Lower Bound (ELBO) strictly over the non-fraudulent population, its weights are calibrated to minimize reconstruction variance rather than maximize class separability. The model views fraud anomalies through a purely reconstruction-oriented lens, which generates overlapping error distributions between high-variance legitimate transactions and true malicious events. 
+
+However, when this unsupervised score stream is routed into our score-level stacking framework, its performance increases significantly, with the global ROC-AUC jumping to 0.8868 and the True Positive Rate reaching 52.99\% at the 4.99\% FPR operating threshold. This sharp performance increase demonstrates the value of leveraging continuous probabilistic latent variables as regularizing inputs for downstream models. By mapping highly fragmented, nominal input dimensions to a smooth Gaussian prior distribution $\mathcal{N}(0,I)$, the VAE encoder functions as a robust spatial regularizer. It provides downstream tree-based models with clean, low-dimensional coordinate fields that capture global behavioral regularities, preventing individual decision splits from overfitting to localized training noise. 
+
+Similarly, the advanced DAE-XGBoost pipeline achieves a strong global ROC-AUC of 0.8752, matching the performance of the probabilistic VAE framework. This validation provides an empirical answer to RQ2. It demonstrates that forcing a deterministic network to reconstruct clean attributes from data corrupted by 15.00\% tabular swap noise successfully extracts highly generalized multi-way feature dependencies. The element-wise absolute error arrays $E_{abs}=|x-\hat{x}|$ function as an effective feature attention mechanism, pre-amplifying transactional anomalies so that the downstream XGBoost meta-learner can select them at its root split nodes. This structural cooperation prevents the gradient-boosted trees from growing to fragile depths, maximizing model generalization under real-world class imbalances.
+
+\subsection{The Resampling and Miscalibration Paradox}
+A key insight discovered during our experimental evaluation involves the structural degradation that occurs when synthetic oversampling algorithms are applied blindly within autoassociative ensembling loops. Traditional machine learning workflows often attempt to resolve class imbalance by applying techniques like SMOTE [70] or ADASYN [71] to the raw features, generating artificial minority records to balance the dataset prior to neural network optimization. When evaluated within our custom VAE pipeline, however, this approach triggered severe probability miscalibration and uniform performance drops. 
+
+This degradation stems from a mathematical mismatch between synthetic oversampling assumptions and the requirements of probabilistic manifold learning. Algorithms like ADASYN synthesize new minority vectors by interpolating linearly between existing fraud coordinates within the raw feature space. In highly imbalanced financial domains, this interpolation populates the sparse unmapped coordinate gaps with uncalibrated records that do not reflect realistic consumer behaviors. When these synthetic records are passed to the autoencoder, they distort the model's ability to learn a clean, representative manifold of legitimate behavior, causing the reconstruction error distributions to overlap significantly. 
+
+Furthermore, inflating the minority class distribution alters the empirical fraud base rate. This alteration causes downstream meta-classifiers to output severely miscalibrated probability scores that fail to align with actual real-world fraud frequencies, validating our design choice to implement target manifold isolation and restrict autoencoder optimization exclusively to uncorrupted, legitimate transaction records.
+
+\section{Chapter Summary and Contribution Log}
+
+\subsection{Summary of Findings}
+This chapter has presented an exhaustive investigation into the structural and empirical performance profiles of unsupervised deep autoassociative neural networks applied to the problem of real-time cyberfraud detection within tabular banking transactions. By establishing parallel processing pipelines using both Variational Autoencoders (VAEs) and Denoising Autoencoders (DAEs), the research has successfully mapped the geometric properties of continuous probabilistic latent manifolds alongside regularized deterministic bottleneck projections. The empirical evaluations conducted across Variant I of the NeurIPS 2022 Bank Account Fraud (BAF) database suite reveal distinct behavioral characteristics and structural capabilities inherent within each deep architectural paradigm. 
+
+The theoretical exploration of the Variational Autoencoder archetype demonstrated that enforcing a standard multivariate Gaussian prior distribution successfully mitigates the risk of spatial fragmentation, resolving the unmapped coordinate gaps common in unconstrained bottleneck architectures. By outputting distinct statistical parameters to represent a mean vector head and a log-variance coordinate head, the encoder layers compress highly heterogeneous continuous and categorical features into a smooth equilibrium topology. Isolating the non-differentiable stochastic sampling node via the reparameterization trick ensures stable gradient flow during backpropagation, permitting the model to minimize a combined Evidence Lower Bound (ELBO) objective function. While the standalone VAE baseline yielded a low isolated true positive rate due to high intra-class variance among legitimate consumer profiles, routing its continuous anomaly score stream into a score-level stacking meta-classifier generated optimal results, yielding a global Receiver Operating Characteristic Area Under the Curve (ROC-AUC) score of 0.8868 and a True Positive Rate (TPR) of 52.99\% under a strict 4.99\% False Positive Rate (FPR) institutional constraint. 
+
+Conversely, the implementation of the Denoising Autoencoder framework provided a powerful deterministic alternative that operates without explicit distribution priors. To preserve the exact statistical boundaries of the multi-way tabular vectors, we engineered an online data augmentation pipeline leveraging column-wise tabular swap noise with a fixed corruption probability of 0.1500. This mechanism effectively destroyed the joint attribute correlations across dimensions, whereas it left the independent univariable marginal distributions completely uncorrupted. The deep symmetric DAE architecture, optimized via a target-isolated Mean Squared Error (MSE) loss function, achieved a strong global ROC-AUC of 0.8752 when hybridized with downstream tree-based models, proving that deterministic networks can match the discriminative capacity of probabilistic frameworks if input spaces are properly regularized via structured corruption.
+
+\subsection{Engineering Insights}
+The comparative analysis of our experimental results reveals several critical engineering insights regarding the deployment of deep autoassociative connectionist models within adversarial financial environments. First, standalone reconstruction models exhibit a severe precision deficit that prevents them from functioning as isolated operational classifiers. Because unsupervised optimization routines are entirely agnostic to downstream target labels, their internal weights are calibrated exclusively to minimize feature reconstruction variances across the legitimate majority population. Consequently, high-variance legitimate consumer habits produce elevated error signatures that overlap with true fraud anomalies, causing a high volume of false alerts. 
+
+To resolve this limitation, the core contribution of this methodology relies on multi-stage information fusion hybridization and score-level stacking loops. Combining unsupervised feature extractors with downstream tree-based meta-learners provides a dependable, production-ready solution to navigate extreme data imbalances. The element-wise absolute error vector $E_{abs}=|x-\hat{x}|$ serves as a localized feature attention mechanism that exposes attribute-level deviations directly to the downstream meta-classifier. Instead of executing an expensive grid search across raw, unconditioned continuous variables, the downstream gradient-boosted decision trees can immediately partition these pre-amplified error vectors near their root split nodes, minimizing tree depth and protecting the system against overfitting to sparse data fields. 
+
+Finally, our experiments expose a critical paradox regarding synthetic tabular data augmentation inside unsupervised learning loops. While traditional supervised models often utilize algorithms like SMOTE or ADASYN on raw parameters to balance skewed class distributions, executing these transformations within a probabilistic manifold learning environment causes uniform performance degradation. Linear interpolation between sparse minority coordinates generates uncalibrated rows that do not align with actual behavioral regularities, distorting the learned sub-manifold structure of legitimate behavior. Furthermore, modifying the empirical prior distribution of classes creates a severe probability miscalibration paradox, driving downstream meta-learners to output biased inference vectors that fail to reflect actual real-world fraud frequencies. Therefore, the path to achieving optimal fraud discrimination dictates the strict implementation of target manifold isolation, filtering training environments to contain exclusively uncorrupted, non-fraudulent transaction sequences, and subsequently passing the enriched feature representations to tree-based meta-learners for robust classification.
+
+\end{document}
