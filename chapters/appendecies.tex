@@ -1,0 +1,181 @@
+Here is the complete, compiled LaTeX document for the entire Appendices chapter.
+
+I have restored all the mathematical equations, variables, and algorithmic loops that were lost when you copied the plain text, and I have included a standard preamble so you can paste this directly into a blank Overleaf project and compile it immediately.
+
+```latex
+\documentclass[12pt]{article}
+
+% --- REQUIRED PACKAGES ---
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage[margin=1in]{geometry}
+
+\begin{document}
+
+\section*{Appendices}
+
+\section*{Appendix A: Denoising Autoencoder (DAE) Architecture and Objective Formulations}
+
+This section details the formal mathematical constructs and specific network topology for the application of the Denoising Autoencoder model utilized in the banking fraud project.
+
+\subsection*{A.1 Tabular Swap Noise Augmentation}
+To preserve the univariable marginal feature distributions while destroying joint multi-feature correlations, online data augmentation is applied via column-wise Tabular Swap Noise. For each feature dimension $j$, a stochastic mask variable $m_j \sim \text{Bernoulli}(\alpha)$ is sampled, where the corruption hyperparameter $\alpha$ is fixed at 0.15 (15\% corruption probability).
+
+The mathematical transformation defining the swap noise mapping is:
+\begin{equation}
+    \tilde{x}_{j} = (1 - m_{j})x_{j} + m_{j} \cdot x_{j}^{*}
+\end{equation}
+Where $x_{j}^{*}$ represents an attribute value sampled at random from the empirical marginal distribution of the same $j$-th feature channel across an independent transaction record.
+
+\subsection*{A.2 DAE Objective Function}
+The network is optimized using a target-isolated Mean Squared Error (MSE) loss function. While the encoder receives the corrupted vector $\tilde{x}$, the loss is computed exclusively between the decoder's reconstructed output $\hat{x}$ and the clean, pristine input vector $x$:
+\begin{equation}
+    \mathcal{L}_{DAE}(\phi,\theta) = \frac{1}{53}\sum_{j=1}^{53}(x_{j} - \hat{x}_{j})^{2}
+\end{equation}
+
+\subsection*{A.3 Network Topology}
+The DAE utilizes a deep, symmetric deterministic configuration built with fully connected dense layers, normalized with Batch Normalization, and activated via LeakyReLU (negative slope parameter 0.20).
+
+\begin{itemize}
+    \item \textbf{Encoder Stack:} 53 features $\rightarrow$ 128 units $\rightarrow$ 64 units $\rightarrow$ Latent Bottleneck $z$
+    \item \textbf{Latent Bottleneck ($z$):} 12 coordinates
+    \item \textbf{Decoder Stack:} Latent Bottleneck $z$ $\rightarrow$ 64 units $\rightarrow$ 128 units $\rightarrow$ 53 units (Linear Activation)
+\end{itemize}
+
+\vspace{2em}
+
+\section*{Appendix B: Spiking Neural Network (SNN) Mathematical Derivations}
+
+\subsection*{B.1 Leaky Integrate-and-Fire (LIF) Dynamics}
+The continuous-time differential equation defining the subthreshold membrane potential $V(t)$ for the LIF neuron is formulated as:
+\begin{equation}
+    \tau\frac{dV(t)}{dt} = -(V(t) - V_{rest}) + RI(t)
+\end{equation}
+For implementation within a discrete-time machine learning framework, this is updated iteratively via the explicit Euler method. The subthreshold membrane potential $U[t]$ is calculated as:
+\begin{equation}
+    U[t] = \beta U[t-1] + I_{syn}[t]
+\end{equation}
+Where $\beta$ denotes the decay factor and $I_{syn}[t]$ is the weighted synaptic input from presynaptic spikes.
+
+\subsection*{B.2 Surrogate Gradient Descent (ArcTan)}
+To permit gradient flow through the non-differentiable Heaviside step function during Backpropagation Through Time (BPTT), an ArcTan (ATan) surrogate gradient is employed. The derivative for the backward pass is strictly computed as:
+\begin{equation}
+    \frac{\partial S}{\partial U} = \frac{1}{\pi} \frac{1}{1 + \left( \frac{\pi U \alpha}{2} \right)^2}
+\end{equation}
+Where the hyperparameter $\alpha$ controls the steepness of the gradient approximation.
+
+\newpage
+
+\section*{Appendix C: Graph Neural Network (GNN) Algorithmic Procedures}
+
+\begin{algorithm}[H]
+\caption{Quantum Graph Neural Network (QGNN) Forward Pass and Training}
+\begin{algorithmic}[1]
+\REQUIRE Graph $\mathcal{G}=(\mathcal{V},\mathcal{E})$, features $\{x_u\}$, labels $\{y_u\}$, VQC layers $L$, qubits $n_q$
+\ENSURE Trained model parameters $\Theta^*$
+\STATE Initialize $W_{enc}, \{W^{(l)}, b^{(l)}\}_{l=1}^L$, MLP parameters
+\FOR{epoch $= 1, 2, \dots, E$}
+    \FOR{each node $u \in \mathcal{V}$ in mini-batch}
+        \STATE $\theta_u \leftarrow [\cos(\pi W_{enc}x_u), \sin(\pi W_{enc}x_u)]$
+        \STATE $v_u^{(0)} \leftarrow \theta_u$
+        \FOR{$l = 1$ to $L$}
+            \STATE $v_u^{(l)} \leftarrow \tanh(W^{(l)}v_u^{(l-1)} + b^{(l)})$
+        \ENDFOR
+    \ENDFOR
+    \FOR{each node $u \in \mathcal{V}$}
+        \STATE $h_u^{agg} \leftarrow \frac{1}{|\mathcal{N}(u)|} \sum_{v \in \mathcal{N}(u)} v_v^{(L)}$
+        \STATE $h_u^{new} \leftarrow \frac{1}{2}(v_u^{(L)} + h_u^{agg})$
+        \STATE $\hat{y}_u \leftarrow \sigma(\text{MLP}(h_u^{new}))$
+    \ENDFOR
+    \STATE Compute $\mathcal{L}_{BCE}$ with $\text{pos\_weight} = 1.5 / \text{fraud ratio}$
+    \STATE Update $\Theta$ via AdamW with cosine LR schedule
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\vspace{1em}
+
+\begin{algorithm}[H]
+\caption{SplitGNN Training Procedure}
+\begin{algorithmic}[1]
+\REQUIRE Graph $\mathcal{G}=(\mathcal{V},\mathcal{E},X)$, labels $\{y_u\}$, wavelet order $C$, split point $K$, edge weight $\gamma_e$
+\ENSURE Trained model parameters $\Theta^*$
+\STATE Initialize node embeddings $\{h_u\}$ from features $X$
+\FOR{epoch $= 1, 2, \dots$ (with early stopping)}
+    \FOR{each edge $(u,v) \in \mathcal{E}$}
+        \STATE $\psi_{uv} \leftarrow \tanh(w^\top [h_u \parallel h_v \parallel (h_u - h_v)])$
+    \ENDFOR
+    \STATE $\mathcal{E}^+ \leftarrow \{(u,v) : \psi_{uv} > 0\}$; \quad $\mathcal{E}^- \leftarrow \{(u,v) : \psi_{uv} < 0\}$
+    \STATE Construct $A^+, A^-$; compute Laplacians $L^+, L^-$ via CachedLaplacian
+    \FOR{each node $u \in \mathcal{V}$}
+        \STATE $\hat{h}_u^{(+)} \leftarrow \sum_{j=0}^{C-K} W_j^{(+)} g_j(L^+) h_u$
+        \STATE $\hat{h}_u^{(-)} \leftarrow \sum_{j=\max(0,K)}^C W_j^{(-)} g_j(L^-) h_u$
+        \STATE $\hat{h}_u \leftarrow \hat{h}_u^{(+)} + \hat{h}_u^{(-)}$
+        \STATE Update $h_u \leftarrow \hat{h}_u$ \hfill (residual connection)
+    \ENDFOR
+    \STATE $\mathcal{L}_{node} \leftarrow \text{FocalLoss}(\hat{y}_u, y_u; \alpha=0.25, \gamma=2.0)$
+    \STATE $\mathcal{L}_{edge} \leftarrow \frac{1}{|\mathcal{E}|} \sum_{(u,v) \in \mathcal{E}} \max(0, 1 - y_{uv}\psi_{uv})$
+    \STATE $\mathcal{L} \leftarrow \mathcal{L}_{node} + \gamma_e \cdot \mathcal{L}_{edge}$
+    \STATE Update $\Theta$ via full-batch gradient descent
+\ENDFOR
+\FOR{$t = 1$ to $5$}
+    \STATE Retrain with $lr \leftarrow lr \times 0.1$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\newpage
+
+\section*{Appendix D: Extended Hyperparameter Configurations}
+
+\subsection*{D.1 Split GNN: Top 5 Configurations}
+
+The grid search evaluated interactions between the edge loss weight ($\gamma_e$), wavelet order ($C$), and split point ($K$). The top 5 stable configurations are listed below:
+
+\begin{table}[H]
+\centering
+\caption{Top 5 Stable Configurations for Split GNN}
+\vspace{0.5em}
+\begin{tabular}{ccccc}
+\toprule
+\textbf{$\gamma_e$} & \textbf{$C$} & \textbf{$K$} & \textbf{Test ROC AUC} & \textbf{TPR @ 5\% FPR} \\ 
+\midrule
+1.0 & 1 &  0 & 0.8806 & 50.6\% \\
+0.4 & 3 & -1 & 0.8804 & 50.1\% \\
+0.8 & 1 &  0 & 0.8804 & 50.2\% \\
+0.6 & 3 &  1 & 0.8803 & 49.6\% \\
+0.6 & 1 &  0 & 0.8801 & 50.8\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{1.5em}
+
+\subsection*{D.2 Quantum GNN (QGNN): Circuit Configuration Sweep}
+
+Performance evaluation across quantum feature space dimensions (qubits) and Variational Quantum Circuit (VQC) depths.
+
+\begin{table}[H]
+\centering
+\caption{QGNN Performance by Circuit Depth and Qubit Configuration}
+\vspace{0.5em}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Configuration} & \textbf{ROC AUC} & \textbf{TPR @ 5\% FPR} & \textbf{True Positives} & \textbf{False Negatives} & \textbf{Approx. Time} \\ 
+\midrule
+16Q, 2L & 0.8769 & 49.24\% & 1,417 & 1,461 & $\sim$75m \\
+16Q, 1L & 0.8731 & 49.13\% & 1,414 & 1,464 & $\sim$70m \\
+6Q, 1L  & 0.8602 & 46.04\% & 1,325 & 1,553 & $\sim$37m \\
+6Q, 2L  & 0.8574 & 44.82\% & 1,290 & 1,588 & $\sim$38m \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+
+```
