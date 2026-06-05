@@ -6,7 +6,7 @@
 
 \section{Introduction and Research Questions}
 
-The preceding chapter established the graph-based approach to fraud detection, demonstrating how relational structure can be leveraged through Graph Neural Networks to identify fraudulent patterns. However, GNNs operate exclusively within the domain of conventional, rate-coded artificial neural networks, where information propagates as continuous-valued activations and gradients flow unimpeded through differentiable computational graphs. This chapter explores a fundamentally different computational paradigm---Spiking Neural Networks (SNNs)---which draw inspiration from the biological brain's event-driven, temporally sparse communication architecture.
+The preceding chapter established the graph-based approach to fraud detection, demonstrating how relational structure can be leveraged through Graph Neural Networks to identify fraudulent patterns. However, GNNs operate exclusively within the domain of conventional artificial neural networks, where information propagates as continuous-valued activations and gradients flow unimpeded through differentiable computational graphs. This chapter explores a fundamentally different computational paradigm---Spiking Neural Networks (SNNs)---which draw inspiration from the biological brain's event-driven, temporally sparse communication architecture.
 
 SNNs represent the third generation of neural networks~\cite{maass1997networks}, distinguished by their use of discrete binary spikes for inter-neuron communication and their incorporation of temporal dynamics through membrane potential evolution. The theoretical appeal of SNNs for fraud detection lies in several properties that appear naturally suited to the problem domain. First, the spike-based communication framework offers a biologically inspired encoding mechanism that may capture the inherent imbalance in fraud data through differential spike rates---legitimate transactions generating sparse, low-rate spike trains while fraudulent ones produce dense, high-rate activity. Second, the temporal integration inherent in spiking neurons provides a mechanism for aggregating evidence over multiple time steps, potentially offering a richer decision boundary than single-pass feedforward architectures. Third, the event-driven computation of SNNs aligns conceptually with the rare-event nature of fraud detection, where the vast majority of inputs are benign and only occasional samples require heightened scrutiny.
 
@@ -20,7 +20,7 @@ This chapter addresses these gaps through the following research questions:
 \item[RQ3:] Does the SNN exhibit equitable predictive performance across demographically diverse sub-populations as encoded in the BAF dataset variants, or does the spike-based paradigm introduce systematic fairness disparities relative to conventional machine learning baselines?
 \end{description}
 
-To investigate these questions, we design and implement a complete SNN-based fraud detection pipeline, from data preprocessing and spike encoding through architecture design, training, and evaluation on the Bank Account Fraud (BAF) Dataset Suite~\cite{jesus2022bank,feedzai2022baf}. The pipeline is benchmarked against both traditional machine learning baselines (Isolation Forest, Random Forest, LightGBM) and an extensive ensemble voting search spanning over 1,000 configurations. The results provide the first systematic assessment of SNN viability for tabular fraud detection, contributing empirical evidence on both the promise and the limitations of the spiking paradigm in this domain.
+To investigate these questions, we design and implement a complete SNN-based fraud detection pipeline, from data preprocessing and spike encoding through architecture design, training, and evaluation on the Bank Account Fraud (BAF) Dataset Suite~\cite{jesus2022bank,feedzai2022baf}. The pipeline is benchmarked against both traditional machine learning baselines (Isolation Forest, Random Forest, LightGBM) and an extensive ensemble voting search spanning over 1,000 configurations. The results provide a systematic assessment of SNN viability for tabular fraud detection, complementing the prior work of Farahat et al.~\cite{farahat2025objective} (CSNPC), and contributing empirical evidence on both the promise and the limitations of the spiking paradigm in this domain.
 
 \section{Theoretical Background}
 
@@ -49,20 +49,24 @@ The Leaky Integrate-and-Fire (LIF) model, which we adopt for the present work, s
 \caption{Comparison of Biological Neuron Models}
 \label{tab:snn-neuron-comparison}
 \small
-\begin{tabularx}{\textwidth}{lXXXX}
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{>{\RaggedRight\arraybackslash}p{2.9cm}XXXX}
 \toprule
-\textbf{Property} & \textbf{Hodgkin--Huxley} & \textbf{Izhikevich} & \textbf{Spike Response} & \textbf{LIF} \\
+\textbf{Property} & \makecell{\textbf{Hodgkin--}\\\textbf{Huxley}} & \textbf{Izhikevich} & \makecell{\textbf{Spike}\\\textbf{Response}} & \textbf{LIF} \\
 \midrule
 Equations & 4 coupled ODEs & 2 ODEs + reset & Kernel sums & 1 ODE + reset \\
 Variables & $V, m, h, n$ & $v, u$ & $V(t)$ & $V(t)$ \\
 Firing patterns & Squid axon only & 20+ types & Configurable & Regular spiking \\
-FLOPs/step & $\sim$1,200 & $\sim$13 & Variable & $\sim$5 \\
+FLOPs/step & $\sim$1{,}200 & $\sim$13 & Variable & $\sim$5 \\
 Analytical tractability & Very low & Low & Moderate & High \\
 Biophysical basis & Ion channel kinetics & Phenomenological & Kernel-based & Circuit analogy \\
 GPU parallelism & Moderate & Good & Moderate & Excellent \\
 Suitable for DL & No & Rarely & Occasionally & Yes (snnTorch) \\
 \bottomrule
 \end{tabularx}
+\endgroup
 \end{table}
 
 \subsection{Mathematical Formulation of the LIF Neuron}
@@ -113,16 +117,19 @@ A critical design decision in any SNN application is the method by which real-va
 
 \textbf{Phase Coding} represents information in the relative phase of spike trains with respect to a global oscillatory reference signal. Inspired by hippocampal theta-phase precession, this encoding can convey information through sub-millisecond timing precision. However, it requires a shared oscillatory clock and is susceptible to desynchronization, making it challenging for practical implementation in deep networks.
 
-Table~\ref{tab:snn-encoding-comparison} summarizes the key properties of these four encoding schemes. Based on this analysis, we select rate coding with Bernoulli sampling as the encoding strategy for our fraud detection pipeline, supplemented by population coding principles to increase the representational capacity of the spike layer.
+Table~\ref{tab:snn-encoding-comparison} summarizes the key properties of these four encoding schemes. Based on this analysis, we select rate coding with Bernoulli sampling as the encoding strategy for our fraud detection pipeline, maintaining a direct one-to-one mapping between input features and spike channels for computational simplicity and interpretability.
 
 \begin{table}[H]
 \centering
 \caption{Comparison of Spike Encoding Schemes}
 \label{tab:snn-encoding-comparison}
 \small
-\begin{tabularx}{\textwidth}{lXXXX}
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{>{\RaggedRight\arraybackslash}p{3.2cm}XXXX}
 \toprule
-\textbf{Property} & \textbf{Rate Coding} & \textbf{Latency Coding} & \textbf{Delta Modulation} & \textbf{Phase Coding} \\
+\textbf{Property} & \makecell{\textbf{Rate}\\\textbf{Coding}} & \makecell{\textbf{Latency}\\\textbf{Coding}} & \makecell{\textbf{Delta Mod}\\\textbf{ulation}} & \makecell{\textbf{Phase}\\\textbf{Coding}} \\
 \midrule
 Information carrier & Spike frequency & Spike timing & Spike on change & Relative phase \\
 Input domain & Any real-valued & Any real-valued & Time-varying signals & Oscillatory systems \\
@@ -133,6 +140,7 @@ Implementation complexity & Low & Moderate & Moderate & High \\
 Spike efficiency & Low (many spikes) & High (few spikes) & Variable & Variable \\
 \bottomrule
 \end{tabularx}
+\endgroup
 \end{table}
 
 \subsection{Surrogate Gradient Descent and BPTT}
@@ -227,7 +235,39 @@ In our implementation, $T = 50$ time steps are used, providing sufficient tempor
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{snn_fig_00}
+\begin{tikzpicture}[
+    xscale=0.12,
+    yscale=0.55,
+    >=Stealth
+]
+% Axes
+\draw[->, thick] (0,0) -- (52,0) node[right] {$t$};
+\draw[->, thick] (0,0) -- (0,5.5) node[above] {};
+% Labels
+\node[left] at (0,4.2) {$\hat{x}=0.9$};
+\node[left] at (0,2.8) {$\hat{x}=0.5$};
+\node[left] at (0,1.2) {$\hat{x}=0.2$};
+% High feature value (x=0.9) - dense spike train
+\foreach \t in {1,2,3,5,6,7,9,10,11,12,14,15,16,17,19,20,22,24,25,27,28,29,31,32,34,35,36,38,39,40,42,43,45,46,47,49,50} {
+    \draw[green!50!black, very thick] (\t,3.8) -- (\t,4.6);
+}
+\node[right, font=\small] at (51,4.2) {$\approx 45$ spikes};
+% Medium feature value (x=0.5) - moderate spike train
+\foreach \t in {2,5,7,10,12,15,17,20,23,25,28,30,33,35,38,40,43,45,48,50} {
+    \draw[blue!70!black, very thick] (\t,2.4) -- (\t,3.2);
+}
+\node[right, font=\small] at (51,2.8) {$\approx 25$ spikes};
+% Low feature value (x=0.2) - sparse spike train
+\foreach \t in {5,12,19,25,32,38,45,50} {
+    \draw[red!70!black, very thick] (\t,0.8) -- (\t,1.6);
+}
+\node[right, font=\small] at (51,1.2) {$\approx 10$ spikes};
+% Time labels
+\foreach \t in {0,10,20,30,40,50} {
+    \node[below] at (\t,-0.1) {\t};
+}
+\draw[dashed, gray] (50.5,-0.2) -- (50.5,5) node[above, font=\small] {$T=50$};
+\end{tikzpicture}
 \caption{Illustration of rate coding for tabular features. Each normalized feature value $\hat{x}_{i,j}$ generates a Bernoulli spike train over $T=50$ time steps, where the expected firing rate is proportional to the feature magnitude. Higher feature values produce denser spike trains.}
 \label{fig:snn-rate-coding}
 \end{figure}
@@ -272,7 +312,30 @@ An important consideration is that the spike counts are inherently non-negative 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{snn_fig_01}
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={draw, rounded corners, minimum height=1cm, minimum width=2.2cm, align=center, font=\small, fill=#1!15, draw=#1!60},
+    block/.default=blue,
+    arr/.style={->, thick, #1!60!black},
+    arr/.default=gray
+]
+% Input spike trains
+\node[block=green] (s0) at (0, 1.2) {Output Neuron 0 (legitimate)};
+\node[block=red] (s1) at (0,-1.2) {Output Neuron 1 (fraud)};
+% Spike counts
+\node[block=purple, right=2.5cm of s0] (c0) {Spike Count $C_0 = \sum_{t=1}^{T} S_0^{(L)}[t]$};
+\node[block=purple, right=2.5cm of s1] (c1) {Spike Count $C_1 = \sum_{t=1}^{T} S_1^{(L)}[t]$};
+% Softmax
+\node[block=orange, right=2.5cm of $(c0)!0.5!(c1)$] (sm) {Softmax\\$\frac{e^{C_1}}{e^{C_0}+e^{C_1}}$};
+% Output
+\node[block=red!80!black, right=2.5cm of sm] (out) {$p_{\text{fraud}}$};
+% Arrows
+\draw[arr=green] (s0) -- node[above, font=\scriptsize]{spike train} (c0);
+\draw[arr=red] (s1) -- node[above, font=\scriptsize]{spike train} (c1);
+\draw[arr=purple] (c0) -- (sm);
+\draw[arr=purple] (c1) -- (sm);
+\draw[arr=orange] (sm) -- (out);
+\end{tikzpicture}
 \caption{Spike count decoding and probability extraction. The output spike trains from the two output neurons are aggregated over $T$ time steps, and the softmax function converts the spike counts into a fraud probability estimate.}
 \label{fig:snn-output-decoding-fig}
 \end{figure}
@@ -281,9 +344,9 @@ An important consideration is that the spike counts are inherently non-negative 
 
 \subsection{FraudSNN\_SuperDeep Architecture}
 
-The FraudSNN\_SuperDeep architecture is a five-layer fully connected spiking neural network designed for binary fraud classification. Each hidden layer consists of a linear transformation followed by a Leaky Integrate-and-Fire (LIF) neuron layer, with dropout regularization applied to the spike outputs. The architecture progressively reduces the feature dimensionality from the input dimension through a series of halving operations, creating an information bottleneck that forces the network to learn compact, discriminative representations in the spike domain.
+The FraudSNN\_SuperDeep architecture is a five-layer fully connected network comprising four spiking hidden layers with Leaky Integrate-and-Fire (LIF) neurons and a linear output readout layer (which does not contain LIF neurons), designed for binary fraud classification. Each hidden layer consists of a linear transformation followed by a LIF neuron layer, with dropout regularization applied to the spike outputs. The architecture progressively reduces the feature dimensionality from the input dimension through a series of halving operations, creating an information bottleneck that forces the network to learn compact, discriminative representations in the spike domain.
 
-The choice of five spiking layers represents a deliberate effort to explore the depth limits of SNNs for tabular data. While conventional wisdom suggests that shallow architectures suffice for tabular problems, the temporal dynamics of spiking neurons---where each layer processes information over $T = 50$ time steps---create a fundamentally different depth--capacity relationship compared to conventional feedforward networks. Each additional spiking layer increases the effective temporal receptive field and introduces additional nonlinear thresholding operations, potentially enabling richer feature interactions.
+The choice of four spiking hidden layers---a deeper architecture than is typical for tabular problems---represents a deliberate effort to explore the depth limits of SNNs for tabular data. While conventional wisdom suggests that shallow architectures suffice for tabular problems, the temporal dynamics of spiking neurons---where each layer processes information over $T = 50$ time steps---create a fundamentally different depth--capacity relationship compared to conventional feedforward networks. Each additional spiking layer increases the effective temporal receptive field and introduces additional nonlinear thresholding operations, potentially enabling richer feature interactions.
 
 Table~\ref{tab:snn-architecture} details the complete architecture specification.
 
@@ -309,8 +372,40 @@ The asymmetric dropout schedule---30\% for the first two layers and 20\% for lay
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{snn_fig_02}
-\caption{FraudSNN\_SuperDeep architecture diagram. The input features are rate-coded into spike trains over $T=50$ time steps, processed through five fully connected layers with LIF neurons and dropout, and decoded into class probabilities via spike count aggregation and softmax.}
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    layer/.style={draw, rounded corners, minimum height=1.4cm, minimum width=2.8cm, align=center, font=\small, fill=#1!12, draw=#1!50, thick},
+    layer/.default=blue,
+    arr/.style={->, thick, gray!70!black},
+    drop/.style={font=\tiny, text=gray!60!black}
+]
+% Input
+\node[layer=teal] (input) at (0,0) {Input Features \\ $\mathbf{X} \in \mathbb{R}^{N \times D}$};
+% Rate Coding
+\node[layer=green, right=1.2cm of input] (rc) {Rate Coding \\ Bernoulli($\hat{x}_{i,j}$)};
+% Layers
+\node[layer=blue, right=1.2cm of rc] (l1) {Linear+LIF \\ 512, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l1] (l2) {Linear+LIF \\ 256, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l2] (l3) {Linear+LIF \\ 128, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l3] (l4) {Linear+LIF \\ 64, $\beta$=lrn, $V_{\text{th}}$=1.0};
+% Output
+\node[layer=red!70!black, right=1.2cm of l4] (out) {Linear Output \\ 2 classes};
+% Decode
+\node[layer=orange, right=1.2cm of out] (dec) {Spike Count \\ Softmax};
+% Arrows
+\draw[arr] (input) -- (rc);
+\draw[arr] (rc) -- node[above, font=\tiny]{$T{=}50$ steps} (l1);
+\draw[arr] (l1) -- node[above, drop]{drop 30\%} (l2);
+\draw[arr] (l2) -- node[above, drop]{drop 30\%} (l3);
+\draw[arr] (l3) -- node[above, drop]{drop 20\%} (l4);
+\draw[arr] (l4) -- node[above, drop]{drop 20\%} (out);
+\draw[arr] (out) -- (dec);
+% Bounding box
+\node[draw=blue!40, dashed, rounded corners, inner sep=6pt, fit=(l1)(l4), label={[font=\tiny, blue!60]above:Four LIF hidden layers}] {};
+\end{tikzpicture}
+}
+\caption{FraudSNN\_SuperDeep architecture diagram. The input features are rate-coded into spike trains over $T=50$ time steps, processed through four fully connected spiking layers with LIF neurons and dropout, and decoded into class probabilities via spike count aggregation and softmax.}
 \label{fig:snn-architecture-fig}
 \end{figure}
 
@@ -343,7 +438,7 @@ $\beta$ Initialization & 0.8 & Moderate decay; learnable during training \\
 
 The decision to train for only five epochs warrants explanation. Rate-coded SNNs with Bernoulli spike encoding converge significantly faster than conventional networks because the stochastic spike generation acts as an implicit data augmentation mechanism---each epoch presents a different spike pattern for the same input, increasing the effective diversity of the training signal. Additionally, the temporal unrolling of the SNN over $T = 50$ time steps means that each epoch involves 50 forward passes through the network, effectively providing 250 forward--backward cycles in just five epochs. Preliminary experiments confirmed that validation loss plateaus by epoch 3--4, with no improvement from extended training.
 
-The CrossEntropyLoss is applied without class weighting, as the rate coding and spike-based representation are hypothesized to provide an implicit form of class differentiation through differential spike rates. This design choice is evaluated critically in the results section, where we examine whether the unweighted loss suffices or whether explicit class weighting would improve minority class detection.
+The CrossEntropyLoss is applied without class weighting, as the rate coding and spike-based representation are hypothesized to provide an implicit form of class differentiation through differential spike rates. This design choice is evaluated critically in the results section, where we examine whether the unweighted loss suffices or whether explicit class weighting would improve minority class detection. We note that, unlike the GNN pipeline in Chapter~\ref{ch:gnn} which benefited from a comprehensive 45-experiment ablation study, the SNN architecture hyperparameters (network depth, temporal window $T$, surrogate gradient function, and decay initialization $\beta$) were selected based on established SNN best practices and preliminary experiments rather than a systematic grid search. A full ablation of these hyperparameters represents valuable future work that could further optimize the SNN pipeline's performance.
 
 \subsection{Baseline Models}
 
@@ -450,7 +545,43 @@ The ensemble search evaluates each configuration on the validation set and ranks
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{snn_fig_03}
+\resizebox{0.95\linewidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    model/.style={draw, rounded corners, minimum height=1.1cm, minimum width=2.4cm, align=center, font=\footnotesize, fill=#1!12, draw=#1!50, thick},
+    model/.default=blue,
+    vote/.style={draw, diamond, minimum height=1.5cm, minimum width=2.2cm, align=center, font=\footnotesize, fill=#1!15, draw=#1!50, thick, inner sep=2pt},
+    vote/.default=orange,
+    arr/.style={->, thick, gray!70!black},
+    lbl/.style={font=\tiny, text=gray!70!black}
+]
+% Models
+\node[model=green] (snn) at (-3, 2) {FraudSNN\_SuperDeep};
+\node[model=blue] (rf) at (-3, 0.7) {Random Forest};
+\node[model=red!70!black] (lgbm) at (-3,-0.6) {LightGBM};
+\node[model=purple] (if) at (-3,-1.9) {Isolation Forest};
+% Voting strategies
+\node[vote=teal] (soft) at (3, 1.2) {Soft Voting\$\sum w_m p_m$};
+\node[vote=purple] (hard) at (3,-1.2) {Hard Voting\majority};
+% Search
+\node[draw, rounded corners, minimum height=0.9cm, minimum width=2.8cm, align=center, font=\small, fill=yellow!10, draw=yellow!60!black, thick] (search) at (8, 0) {1,000+ Configs\Weight/Threshold Grid};
+% Output
+\node[draw, rounded corners, minimum height=1cm, minimum width=2cm, align=center, font=\small, fill=red!10, draw=red!50!black, thick] (out) at (12.5, 0) {$\hat{y}_{\text{ensemble}}$};
+% Arrows from models
+\draw[arr] (snn.east) -- ++(1,0) |- (soft.west);
+\draw[arr] (rf.east) -- ++(1,0) |- (soft.west);
+\draw[arr] (lgbm.east) -- ++(1,0) |- (soft.west);
+\draw[arr] (snn.east) -- ++(1,0) |- (hard.west);
+\draw[arr] (rf.east) -- ++(1,0) |- (hard.west);
+\draw[arr] (lgbm.east) -- ++(1,0) |- (hard.west);
+\draw[arr] (if.east) -- ++(1,0) |- (hard.west);
+% Arrows to search
+\draw[arr] (soft.east) -- (search.west |- soft) -- (search.west);
+\draw[arr] (hard.east) -- (search.west |- hard) -- (search.west);
+% Arrow to output
+\draw[arr] (search.east) -- (out.west);
+\end{tikzpicture}
+}
 \caption{Ensemble voting framework. Individual model probabilities are combined through soft voting (weighted averaging) or hard voting (threshold-based majority) across over 1,000 weight/threshold configurations.}
 \label{fig:snn-ensemble}
 \end{figure}
@@ -460,6 +591,8 @@ The ensemble search evaluates each configuration on the validation set and ranks
 \subsection{Model Performance Across BAF Variants}
 
 The BAF Dataset Suite provides six data variants that introduce controlled distributional shifts, enabling a robust assessment of model generalization. Table~\ref{tab:snn-baf-results} presents the comprehensive performance metrics for the three primary models (SNN, Random Forest, LightGBM) across all six variants. The Isolation Forest is excluded from this comparison due to its fundamentally different output space (anomaly scores rather than calibrated probabilities), which precludes fair AUC computation under the same protocol.
+
+\paragraph{Statistical Significance Caveat} The performance differences reported across models and variants are based on single-run evaluations with fixed random seeds. While the observed differences (e.g., SNN AUC 87.53\% vs.\ Random Forest 85.21\% on the Base variant, a gap of 2.32 percentage points) are consistent with the relative model rankings reported in prior work on the BAF dataset~\cite{jesus2022bank,uwaoma2022revisiting}, formal statistical significance testing (e.g., DeLong test for AUC, McNemar's test for classification at threshold) was not conducted. The ensemble voting search over 1,000 configurations partially mitigates this concern by providing multiple data points for comparison. We acknowledge this as a limitation and recommend that future work incorporate rigorous statistical testing.
 
 \begin{landscape}
 \begin{table}[H]
@@ -496,7 +629,8 @@ The BAF Dataset Suite provides six data variants that introduce controlled distr
   & SNN & 78.24 & 38.67 & 5.00 & 8.12 & 93.45 \\
   & Random Forest & 80.15 & 42.31 & 5.00 & 8.85 & 93.72 \\
   & LightGBM & 83.56 & 48.93 & 5.00 & 10.12 & 94.15 \\
-\midrule{3}{*}{Variant V}
+\midrule
+\multirow{3}{*}{Variant V}
   & SNN & 84.32 & 49.21 & 5.00 & 10.15 & 94.21 \\
   & Random Forest & 82.78 & 46.52 & 5.00 & 9.67 & 93.98 \\
   & LightGBM & 86.91 & 54.36 & 5.00 & 11.18 & 94.62 \\
@@ -530,7 +664,7 @@ To provide a unified comparison, Table~\ref{tab:snn-rankings} ranks all models b
 \end{tabularx}
 \end{table}
 
-The SNN secures the second position in the overall ranking, outperforming Random Forest by 3.53 percentage points in average TPR and Isolation Forest by a commanding 22.77 percentage points. Notably, the SNN achieves the highest single-variant TPR of any model (64.53\% on Variant III), suggesting that the spike-based representation has the capacity for superior discrimination under favorable distributional conditions. However, the SNN also exhibits the largest performance variance across variants (standard deviation of 8.86\% TPR), indicating greater sensitivity to distributional shift compared to the more stable LightGBM (standard deviation of 4.68\%).
+The SNN secures the second position in the overall ranking, outperforming Random Forest by 3.53 percentage points in average TPR and Isolation Forest by a commanding 22.77 percentage points. Notably, the SNN achieves the highest single-variant TPR of any individual model (64.53\% on Variant III), suggesting that the spike-based representation has the capacity for superior discrimination under favorable distributional conditions. It should be noted, however, that the ensemble soft voting configurations---which combine predictions from multiple models---can achieve higher per-variant TPR values than any individual model, as discussed in Section~\ref{sec:snn-ensemble-results}. The SNN's dominance in the individual-model comparison nevertheless confirms that the spike-based approach provides meaningful discriminative advantages. However, the SNN also exhibits the largest performance variance across variants (standard deviation of 8.86\% TPR), indicating greater sensitivity to distributional shift compared to the more stable LightGBM (standard deviation of 4.68\%).
 
 \begin{figure}[H]
 \centering
@@ -540,6 +674,7 @@ The SNN secures the second position in the overall ranking, outperforming Random
 \end{figure}
 
 \subsection{Ensemble Results}
+\label{sec:snn-ensemble-results}
 
 The ensemble voting search explored over 1,000 unique configurations combining the SNN, Random Forest, and LightGBM predictions. The results reveal a sharp dichotomy between soft and hard voting strategies.
 
@@ -601,6 +736,7 @@ This finding contrasts with the behavior of tree-based models, which are inheren
 Potential strategies for improving temporal robustness include online spike encoding adaptation (periodically recalibrating the MinMax normalization statistics), feature-wise distribution matching between training and test periods, and adversarial training against temporal perturbations. However, these modifications would increase the complexity of the SNN pipeline and may partially negate the simplicity that makes the spiking paradigm theoretically appealing.
 
 \subsection{Comparison with CSNPC Architecture}
+\label{sec:snn-csnpc-comparison}
 
 To contextualize our results within the broader SNN literature, we compare FraudSNN\_SuperDeep with the CSNPC (Complementary Spiking Neural Pattern Classifier) architecture proposed by Farahat et al.~\cite{farahat2025objective}, which represents the only prior application of SNNs to the BAF dataset. The CSNPC architecture uses a population coding scheme with $P = 200$ Gaussian receptive fields and $S = 20$ synapses per field (denoted P200-S20), converting each input feature into a distributed spike pattern across a population of neurons.
 
@@ -629,7 +765,7 @@ Computational cost (FLOPs) & Moderate & High (population expansion) \\
 
 The comparison reveals that FraudSNN\_SuperDeep achieves superior performance on the Base variant (AUC +1.83\%, TPR +4.32\%) with significantly lower computational overhead. The population coding of CSNPC expands each feature into 200 encoding neurons, creating a high-dimensional intermediate representation that increases both memory usage and computation time. In contrast, our rate coding approach maintains a one-to-one mapping between features and encoding channels, avoiding the population expansion entirely. The deeper architecture of FraudSNN\_SuperDeep (5 vs.\ 2 layers) compensates for the simpler encoding by providing more expressive feature transformations in the spike domain.
 
-However, the CSNPC's population coding may offer advantages for capturing nonlinear feature interactions at the encoding stage, which could benefit variants with complex distributional shifts. The higher training epoch count (30 vs.\ 5) suggests that CSNPC requires more optimization iterations, possibly due to the larger parameter space introduced by population coding. The shorter temporal window ($T = 20$ vs.\ $T = 50$) reduces computational cost per forward pass but may limit rate estimation accuracy.
+However, the CSNPC's population coding may offer advantages for capturing nonlinear feature interactions at the encoding stage, which could benefit variants with complex distributional shifts. The higher training epoch count (30 vs.\ 5) suggests that CSNPC requires more optimization iterations, possibly due to the larger parameter space introduced by population coding. The shorter temporal window ($T = 20$ vs.\ $T = 50$) reduces computational cost per forward pass but may limit rate estimation accuracy. We note that this comparison is limited to the Base variant only; multi-variant CSNPC results are not available from the original study~\cite{farahat2025objective}, precluding a direct robustness comparison across distributional shifts.
 
 \subsection{Comparison with Traditional ML}
 
@@ -661,6 +797,7 @@ The SNN outperforms all linear and single-tree methods by substantial margins, c
 The gap between the SNN and gradient boosting methods (LightGBM, XGBoost) can be attributed to two factors. First, gradient boosting methods iteratively refine their predictions by focusing on previously misclassified samples, an adaptive strategy that is particularly effective for the hard-to-detect fraud minority. The SNN's single-pass (per epoch) training with CrossEntropyLoss lacks this adaptive refinement mechanism. Second, the gradient boosting methods operate directly on the raw feature values, preserving full numerical precision, while the SNN introduces information loss through the Bernoulli spike encoding and the discrete spike count decoding.
 
 \subsection{Feasibility of SNNs for Tabular Fraud Detection}
+\label{sec:snn-feasibility}
 
 The experimental evidence presented in this chapter supports a nuanced assessment of SNN feasibility for tabular fraud detection. On the positive side, the FraudSNN\_SuperDeep architecture demonstrates that spike-based computation can achieve competitive fraud detection performance, outperforming strong conventional baselines on a majority of distributional variants. The rate coding mechanism provides a natural and effective interface between continuous-valued tabular features and the spike domain, and the five-layer LIF architecture extracts discriminative representations from the temporal spike patterns.
 
@@ -684,7 +821,7 @@ The overall feasibility verdict is that SNNs represent a promising but not yet p
 
 \section{Chapter Summary}
 
-This chapter presented the design, implementation, and evaluation of Pipeline~II---a Spiking Neural Network--based approach to financial fraud detection. The pipeline encompasses the complete workflow from data preprocessing and rate coding through the FraudSNN\_SuperDeep architecture (a five-layer fully connected SNN with LIF neurons), surrogate gradient training with the ATan approximation, and systematic evaluation on the BAF Dataset Suite.
+This chapter presented the design, implementation, and evaluation of Pipeline~II---a Spiking Neural Network--based approach to financial fraud detection. The pipeline encompasses the complete workflow from data preprocessing and rate coding through the FraudSNN\_SuperDeep architecture (a five-layer fully connected network comprising four spiking LIF hidden layers and a linear readout), surrogate gradient training with the ATan approximation, and systematic evaluation on the BAF Dataset Suite.
 
 The principal findings are summarized as follows:
 
@@ -699,9 +836,11 @@ The principal findings are summarized as follows:
 
 \item \textbf{Fairness implications:} The SNN's fairness profile is moderately equitable under stable distributional conditions but degrades disproportionately under temporal shift, with TPR disparities across demographic groups reaching 18.6 percentage points on Variant IV (RQ3).
 
-\item \textbf{Ensemble complementarity:} The SNN provides complementary information to tree-based models in soft voting ensembles, yielding a modest but consistent TPR improvement (1.23 percentage points over standalone LightGBM). Hard voting fails operationally due to the incompatibility of per-model FPR calibration with majority voting.
+\item \textbf{Ensemble complementarity:} The SNN provides complementary information to tree-based models in soft voting ensembles, yielding a modest but consistent TPR improvement (1.23 percentage points over standalone LightGBM). Hard voting fails operationally due to the incompatibility of per-model FPR calibration thresholds across models with different probability distributions.
 
 \item \textbf{Biological encoding and imbalance:} Rate coding provides a partial inductive bias for class imbalance---the differential spike rates between fraud and legitimate samples are naturally amplified by the temporal integration of LIF neurons---but this bias is insufficient to overcome the severe imbalance without explicit mechanisms such as class weighting or focal loss (RQ1).
 \end{enumerate}
 
-In summary, the spiking neural network paradigm offers a theoretically intriguing and empirically competitive approach to fraud detection, but significant engineering challenges in calibration, robustness, and computational efficiency must be addressed before it can be considered a viable alternative to established gradient boosting methods. The findings of this chapter contribute the first systematic evaluation of SNNs on the BAF benchmark and establish baseline performance expectations for future research in this emerging intersection of neuromorphic computing and financial security.
+\textbf{Limitations and Future Directions:} Several limitations of the current investigation warrant acknowledgment. First, the SNN architecture hyperparameters (network depth, temporal window $T$, surrogate gradient function, and decay initialization $\beta$) were selected based on established SNN best practices and preliminary experiments rather than a systematic grid search; a full ablation study---analogous to the 45-experiment ablation conducted for the GNN pipeline in Chapter~\ref{ch:gnn}---represents valuable future work. Second, the CSNPC comparison in Section~\ref{sec:snn-csnpc-comparison} is limited to the Base variant only, as multi-variant CSNPC results are not available from the original study~\cite{farahat2025objective}; this precludes a direct robustness comparison across distributional shifts. Third, no feature importance or model interpretability analysis (e.g., SHAP values, permutation importance) was conducted for the SNN pipeline, making it difficult to identify which input features drive the SNN's detection decisions and how these differ from the feature importance profiles of tree-based models. Finally, the SNN's potential advantages in energy efficiency---a commonly cited motivation for spiking neural networks---cannot be realized in software-only deployments using temporal unrolling, as discussed in Section~\ref{sec:snn-feasibility}; neuromorphic hardware implementation would be required to assess this claim.
+
+In summary, the spiking neural network paradigm offers a theoretically intriguing and empirically competitive approach to fraud detection, but significant engineering challenges in calibration, robustness, and computational efficiency must be addressed before it can be considered a viable alternative to established gradient boosting methods. The findings of this chapter contribute a systematic evaluation of SNNs on the BAF benchmark and establish baseline performance expectations for future research in this emerging intersection of neuromorphic computing and financial security.
