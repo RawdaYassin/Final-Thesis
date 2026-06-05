@@ -1,8 +1,14 @@
 % =====================================================================
 % CHAPTER 5: PIPELINE I — GRAPH NEURAL NETWORK–BASED FRAUD DETECTION
 % =====================================================================
+% Required packages (ensure these are loaded in the main document preamble):
+%   booktabs, tabularx, multirow, array, siunitx, pdflscape, caption, graphicx
+% =====================================================================
 \chapter{Pipeline I: Graph Neural Network--Based Fraud Detection}
 \label{ch:gnn}
+
+% --- Global table formatting helpers ---
+\newcommand{\tablestrut}{\renewcommand{\arraystretch}{1.18}}
 
 \section{Data Preprocessing Techniques}
 
@@ -28,7 +34,7 @@ The architectural design follows a hierarchical structure consisting of two prim
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figure_2}
+\includegraphics[width=0.95\textwidth]{images/gnn_fig1.png}
 \caption{Architecture of the GNNFraudDetector (GraphSAGE). The pipeline processes node features through three SAGEConv layers with BatchNorm, filters to user nodes, then passes through two fully connected layers for binary classification.}
 \label{fig:gnn-fig2}
 \end{figure}
@@ -37,18 +43,19 @@ The model comprises three SAGEConv layers: the first layer projects the input di
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{GNNFraudDetector Layer Architecture}
 \label{tab:gnn-sage-layers}
 \small
-\begin{tabularx}{0.9\textwidth}{lXllX}
+\begin{tabularx}{\textwidth}{llccX}
 \toprule
 \textbf{Layer} & \textbf{Operation} & \textbf{Input Dim} & \textbf{Output Dim} & \textbf{Regularization} \\
 \midrule
 conv1 & SAGEConv & F & 128 & BN + ReLU + Dropout(0.5) \\
 conv2 & SAGEConv & 128 & 128 & BN + ReLU + Dropout(0.5) \\
 conv3 & SAGEConv & 128 & 64 & ReLU + Dropout(0.5) \\
-fc1 & Linear & 64 & 32 & ReLU + Dropout(0.5) \\
-fc2 & Linear & 32 & 2 & --- \\
+fc1   & Linear   & 64 & 32  & ReLU + Dropout(0.5) \\
+fc2   & Linear   & 32 & 2   & --- \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -61,7 +68,7 @@ The system consists of three core components: the Angle Encoding layer, the Vari
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figure_6}
+\includegraphics[width=0.95\textwidth]{images/gnn_fig2.png}
 \caption{Architecture of the Proposed Quantum GNN (PaperQGNN). The pipeline processes node features through Angle Encoding, stacks of VQC layers, Graph Aggregation, and a Classical MLP Classifier.}
 \label{fig:gnn-fig6}
 \end{figure}
@@ -105,7 +112,7 @@ The Split Graph Neural Network introduces a fundamentally different paradigm: le
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figure_11}
+\includegraphics[width=0.95\textwidth]{images/gnn_fig3.png}
 \caption{Split GNN Architecture --- The complete pipeline from input features to binary classification output.}
 \label{fig:gnn-fig11}
 \end{figure}
@@ -220,25 +227,26 @@ The hyperparameter optimisation strategy varies by architecture:
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Split GNN Fixed Hyperparameters}
 \label{tab:gnn-split-fixed}
 \small
-\begin{tabularx}{0.92\textwidth}{lXP{5.5cm}}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}XX}
 \toprule
 \textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
 \midrule
-hidden\_dim & 8 & Hidden representation dimension \\
-Learning Rate & 0.001 & Base learning rate (Adam optimizer) \\
-Max LR & 0.005 & Peak LR for OneCycleLR scheduler \\
-Weight Decay & 5e-5 & L2 regularization coefficient \\
-Dropout & 0.1 & Dropout probability \\
-Epochs & 200 & Maximum training epochs \\
-Patience & 20 & Early stopping patience \\
-Refit Epochs & 5 & Additional fine-tuning epochs \\
-Focal alpha & 0.25 & Focal Loss class weighting \\
-Focal gamma & 2.0 & Focal Loss focusing parameter \\
-Batch Strategy & Full-batch & Entire graph processed at once \\
-Target FPR & 5\% & Operating threshold calibration \\
+hidden\_dim     & 8     & Hidden representation dimension \\
+Learning Rate   & 0.001 & Base learning rate (Adam optimizer) \\
+Max LR          & 0.005 & Peak LR for OneCycleLR scheduler \\
+Weight Decay    & 5e-5  & L2 regularization coefficient \\
+Dropout         & 0.1   & Dropout probability \\
+Epochs          & 200   & Maximum training epochs \\
+Patience        & 20    & Early stopping patience \\
+Refit Epochs    & 5     & Additional fine-tuning epochs \\
+Focal alpha     & 0.25  & Focal Loss class weighting \\
+Focal gamma     & 2.0   & Focal Loss focusing parameter \\
+Batch Strategy  & Full-batch & Entire graph processed at once \\
+Target FPR      & 5\%   & Operating threshold calibration \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -251,22 +259,23 @@ The GNNFraudDetector is implemented as a subclass of PyTorch \texttt{nn.Module}.
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{GraphSAGE Training Hyperparameters}
 \label{tab:gnn-sage-hparams}
 \small
-\begin{tabularx}{0.92\textwidth}{lXP{5cm}}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}XX}
 \toprule
 \textbf{Hyperparameter} & \textbf{Value} & \textbf{Notes} \\
 \midrule
-Optimizer & Adam & weight\_decay = 1e-5 \\
-Learning Rate & 0.001 & Fixed initial LR \\
-LR Scheduler & ReduceLROnPlateau & factor=0.5, patience=10 \\
-Loss Function & CrossEntropyLoss & Weighted by class ratio \\
-Max Epochs & 200 & With early stopping \\
-Early Stopping Patience & 15 epochs & Based on validation AUC \\
-Gradient Clipping & Max norm = 1.0 & Prevents exploding gradients \\
+Optimizer               & Adam              & weight\_decay = 1e-5 \\
+Learning Rate           & 0.001             & Fixed initial LR \\
+LR Scheduler            & ReduceLROnPlateau & factor=0.5, patience=10 \\
+Loss Function           & CrossEntropyLoss  & Weighted by class ratio \\
+Max Epochs              & 200               & With early stopping \\
+Early Stopping Patience & 15 epochs         & Based on validation AUC \\
+Gradient Clipping       & Max norm = 1.0    & Prevents exploding gradients \\
 Train / Val / Test Split & 80\% / 20\% / Hold-out & Stratified + temporal \\
-Fraud Class Weight & $\sim$96--99x & num\_legit / num\_fraud \\
+Fraud Class Weight      & $\sim$96--99x     & num\_legit / num\_fraud \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -297,22 +306,23 @@ Two experiments evaluate the impact of hidden dimension size on GraphSAGE perfor
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{GraphSAGE Experiment Configurations}
 \label{tab:gnn-sage-configs}
 \small
-\begin{tabularx}{0.85\textwidth}{lXX}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 \textbf{Parameter} & \textbf{Experiment 1} & \textbf{Experiment 2} \\
 \midrule
-Hidden Dimension & 128 & 64 \\
-FC1 Output Dim & 32 & 16 \\
-Total Parameters & $\sim$104K & $\sim$26K \\
-Train Samples & 635,991 & 675,666 \\
-Val Samples & 158,998 & 119,323 \\
-Test Samples & 205,011 & 205,011 \\
-Fraud Class Weight & 96.53 & 99.25 \\
-Epochs Trained & 188 (early stop) & 158 (early stop) \\
-Best Val AUC & 0.8858 & 0.8827 \\
+Hidden Dimension   & 128              & 64 \\
+FC1 Output Dim     & 32               & 16 \\
+Total Parameters   & $\sim$104K       & $\sim$26K \\
+Train Samples      & 635,991          & 675,666 \\
+Val Samples        & 158,998          & 119,323 \\
+Test Samples       & 205,011          & 205,011 \\
+Fraud Class Weight & 96.53            & 99.25 \\
+Epochs Trained     & 188 (early stop) & 158 (early stop) \\
+Best Val AUC       & 0.8858           & 0.8827 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -323,17 +333,17 @@ Four experiments vary the number of qubits (width) and VQC layers (depth) for th
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{QGNN Experiment Configurations}
 \label{tab:gnn-qgnn-configs}
 \small
-\setlength{\tabcolsep}{6pt}
-\begin{tabularx}{0.95\textwidth}{lrrlrrr}
+\begin{tabularx}{\textwidth}{lcc>{\centering\arraybackslash}Xccc}
 \toprule
 \textbf{Exp.} & \textbf{Qubits} & \textbf{VQC Layers} & \textbf{Train Time} & \textbf{ROC AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Epochs} \\
 \midrule
 1 & 16 & 4 & $\sim$75 min & 0.8769 & 49.24\% & 200 \\
-2 & 6 & 1 & $\sim$37 min & 0.8602 & 46.04\% & 200 \\
-3 & 6 & 2 & $\sim$38 min & 0.8574 & 44.82\% & 200 \\
+2 & 6  & 1 & $\sim$37 min & 0.8602 & 46.04\% & 200 \\
+3 & 6  & 2 & $\sim$38 min & 0.8574 & 44.82\% & 200 \\
 4 & 16 & 1 & $\sim$70 min & 0.8731 & 49.13\% & 200 \\
 \bottomrule
 \end{tabularx}
@@ -349,22 +359,22 @@ Table~\ref{tab:gnn-published-baselines} compares our best results with published
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Comparison with Published Baselines}
 \label{tab:gnn-published-baselines}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{lXXX}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}XX}
 \toprule
 \textbf{Method} & \textbf{Dataset} & \textbf{ROC AUC} & \textbf{Key Feature} \\
 \midrule
-GCN~\cite{kipf2017semisupervised} & IEEE-CIS & 0.87 & Spectral convolution \\
-GAT~\cite{velivckovic2018graph} & IEEE-CIS & 0.89 & Attention-weighted aggregation \\
-GraphSAGE~\cite{hamilton2017inductive} & IEEE-CIS & 0.88 & Neighborhood sampling \\
-QGNN~\cite{herrman2022quantum} & Synthetic & 0.85 & Quantum feature maps \\
+GCN~\cite{kipf2017semisupervised}        & IEEE-CIS      & 0.87  & Spectral convolution \\
+GAT~\cite{velivckovic2018graph}           & IEEE-CIS      & 0.89  & Attention-weighted aggregation \\
+GraphSAGE~\cite{hamilton2017inductive}    & IEEE-CIS      & 0.88  & Neighborhood sampling \\
+QGNN~\cite{herrman2022quantum}            & Synthetic     & 0.85  & Quantum feature maps \\
 \midrule
-GraphSAGE (Ours) & Basehiem et al. & 0.8859 & Heterogeneous graph \\
-QGNN (Ours) & Basehiem et al. & 0.8769 & Simulated VQC \\
-Split GNN (Ours) & Basehiem et al. & 0.8806 & Edge splitting + wavelet \\
+GraphSAGE (Ours)  & Basehiem et al.\ & 0.8859 & Heterogeneous graph \\
+QGNN (Ours)       & Basehiem et al.\ & 0.8769 & Simulated VQC \\
+Split GNN (Ours)  & Basehiem et al.\ & 0.8806 & Edge splitting + wavelet \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -388,46 +398,47 @@ The evaluation employs multiple complementary metrics:
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_3}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig4.png}
 \caption{GraphSAGE Performance Comparison. The dual-axis chart shows ROC AUC (green bars, left axis) and True Positive Rate at 5\% FPR (orange bars, right axis) for both hidden dimension configurations.}
 \label{fig:gnn-fig3}
 \end{figure}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{GraphSAGE Detailed Performance Metrics}
 \label{tab:gnn-sage-metrics}
 \small
-\begin{tabularx}{0.85\textwidth}{Xrr}
+\begin{tabularx}{\textwidth}{Xcc}
 \toprule
 \textbf{Metric} & \textbf{Hidden Dim 128} & \textbf{Hidden Dim 64} \\
 \midrule
-Test ROC AUC & 0.8859 & 0.8829 \\
-Operating Threshold & 0.7621 & 0.7601 \\
-FPR at Threshold & 4.98\% & 4.99\% \\
-TPR at Threshold & 52.54\% & 51.18\% \\
-Fraud Precision & 0.13 & 0.13 \\
-Fraud Recall & 0.53 & 0.51 \\
-Fraud F1-Score & 0.21 & 0.20 \\
-Weighted Accuracy & 94\% & 94\% \\
-True Negatives (TN) & 192,065 & 192,046 \\
-False Positives (FP) & 10,068 & 10,087 \\
-False Negatives (FN) & 1,366 & 1,405 \\
-True Positives (TP) & 1,512 & 1,473 \\
+Test ROC AUC         & 0.8859   & 0.8829 \\
+Operating Threshold  & 0.7621   & 0.7601 \\
+FPR at Threshold     & 4.98\%   & 4.99\% \\
+TPR at Threshold     & 52.54\%  & 51.18\% \\
+Fraud Precision      & 0.13     & 0.13 \\
+Fraud Recall         & 0.53     & 0.51 \\
+Fraud F1-Score       & 0.21     & 0.20 \\
+Weighted Accuracy    & 94\%     & 94\% \\
+True Negatives (TN)  & 192,065  & 192,046 \\
+False Positives (FP) & 10,068   & 10,087 \\
+False Negatives (FN) & 1,366    & 1,405 \\
+True Positives (TP)  & 1,512    & 1,473 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_4}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig5.png}
 \caption{Experiment 1 (Hidden Dim 128) --- ROC Curve and Confusion Matrix. The model achieved the best ROC AUC of 0.8859 with a TPR of 52.54\% at 5\% FPR.}
 \label{fig:gnn-fig4}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_5}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig6.png}
 \caption{Experiment 2 (Hidden Dim 64) --- ROC Curve and Confusion Matrix. The model achieved an AUC of 0.8829 with a TPR of 51.18\% at 5\% FPR.}
 \label{fig:gnn-fig5}
 \end{figure}
@@ -436,23 +447,24 @@ True Positives (TP) & 1,512 & 1,473 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_7}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig7.png}
 \caption{Performance Comparison of QGNN Configurations. Dual-axis chart showing ROC AUC (blue, left) and TPR at 5\% FPR (orange, right).}
 \label{fig:gnn-fig7}
 \end{figure}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Confusion Matrix Details for All QGNN Experiments}
 \label{tab:gnn-qgnn-confusion}
 \small
-\begin{tabularx}{0.9\textwidth}{lXrrrr}
+\begin{tabularx}{\textwidth}{lccccc}
 \toprule
 \textbf{Experiment} & \textbf{Threshold} & \textbf{TN} & \textbf{FP} & \textbf{FN} & \textbf{TP} \\
 \midrule
-1 (16Q, 4L) & 0.7983 & 192,032 & 10,101 & 1,461 & 1,417 \\
-2 (6Q, 1L) & 0.7857 & 192,025 & 10,108 & 1,553 & 1,325 \\
-3 (6Q, 2L) & 0.8223 & 192,018 & 10,115 & 1,588 & 1,290 \\
+1 (16Q, 1L) & 0.7983 & 192,032 & 10,101 & 1,461 & 1,417 \\
+2 (6Q, 1L)  & 0.7857 & 192,025 & 10,108 & 1,553 & 1,325 \\
+3 (6Q, 2L)  & 0.8223 & 192,018 & 10,115 & 1,588 & 1,290 \\
 4 (16Q, 1L) & 0.7905 & 192,026 & 10,107 & 1,464 & 1,414 \\
 \bottomrule
 \end{tabularx}
@@ -460,28 +472,28 @@ True Positives (TP) & 1,512 & 1,473 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_8}
-\caption{Experiment 1 (16 Qubits, 4 Layers) --- ROC Curve and Confusion Matrix. Best QGNN configuration with AUC = 0.8769.}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig8.png}
+\caption{Experiment 1 (16 Qubits, 1 Layers) --- ROC Curve and Confusion Matrix. Best QGNN configuration with AUC = 0.8769.}
 \label{fig:gnn-fig8}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_9}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig9.png}
 \caption{Experiment 4 (16 Qubits, 1 Layer) --- ROC Curve and Confusion Matrix. AUC = 0.8731.}
 \label{fig:gnn-fig9}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_9}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig10.png}
 \caption{Experiment 2 (6 Qubits, 1 Layer) --- ROC Curve and Confusion Matrix. AUC = 0.8602.}
 \label{fig:gnn-fig10}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_10}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig11.png}
 \caption{Experiment 3 (6 Qubits, 2 Layers) --- ROC Curve and Confusion Matrix. AUC = 0.8574.}
 \label{fig:gnn-qgnn-exp3-roc}
 \end{figure}
@@ -492,7 +504,7 @@ True Positives (TP) & 1,512 & 1,473 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_12}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig12.png}
 \caption{Effect of $\gamma_{\text{edge}}$ on model performance --- best/mean/worst AUC (left) and fraud detection rate (right).}
 \label{fig:gnn-fig12}
 \end{figure}
@@ -501,18 +513,18 @@ True Positives (TP) & 1,512 & 1,473 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_13}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig13.png}
 \caption{Effect of wavelet order $C$ on Test AUC --- distribution box plots (left) and best vs worst comparison (right).}
 \label{fig:gnn-fig13}
 \end{figure}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Performance Summary by Wavelet Order}
 \label{tab:gnn-wavelet-summary}
 \small
-\setlength{\tabcolsep}{4pt}
-\begin{tabularx}{\textwidth}{Xrrrrr}
+\begin{tabularx}{\textwidth}{Xccccc}
 \toprule
 \textbf{Wavelet Order $C$} & \textbf{Mean AUC} & \textbf{Best AUC} & \textbf{Worst AUC} & \textbf{Std Dev} & \textbf{\# Configs} \\
 \midrule
@@ -527,7 +539,7 @@ $C = 3$ (4 bands) & 0.8665 & 0.8804 & 0.8472 & 0.010 & 20 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_1}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig14.png}
 \caption{Effect of split point $K$ on Test AUC --- distribution box plots (left) and interaction with wavelet order $C$ (right).}
 \label{fig:gnn-k-effect}
 \end{figure}
@@ -536,49 +548,49 @@ $C = 3$ (4 bands) & 0.8665 & 0.8804 & 0.8472 & 0.010 & 20 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_2}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig15.png}
 \caption{Complete heatmap of Test ROC AUC across all 45 experiments, organized by $(C, K)$ configuration and $\gamma_{\text{edge}}$ value.}
 \label{fig:gnn-ablation-heatmap}
 \end{figure}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Top 10 Split GNN Configurations}
 \label{tab:gnn-top10}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{cXrrr}
+\begin{tabularx}{\textwidth}{cXccc}
 \toprule
 \textbf{Rank} & \textbf{Configuration} & \textbf{Test AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Val AUC} \\
 \midrule
-1 & $\gamma$=1.0, C=1, K=0 & 0.8806 & 50.6\% & 0.8808 \\
-2 & $\gamma$=0.4, C=3, K=$-$1 & 0.8804 & 50.1\% & 0.8800 \\
-3 & $\gamma$=0.8, C=1, K=0 & 0.8804 & 50.2\% & 0.8798 \\
-4 & $\gamma$=0.6, C=3, K=1 & 0.8803 & 49.6\% & 0.8802 \\
-5 & $\gamma$=0.6, C=1, K=0 & 0.8801 & 50.8\% & 0.8811 \\
-6 & $\gamma$=0.4, C=1, K=0 & 0.8800 & 50.3\% & 0.8797 \\
-7 & $\gamma$=0.6, C=1, K=$-$1 & 0.8800 & 50.5\% & 0.8792 \\
-8 & $\gamma$=0.4, C=1, K=$-$1 & 0.8797 & 50.8\% & 0.8807 \\
-9 & $\gamma$=0.6, C=2, K=1 & 0.8788 & 50.0\% & 0.8793 \\
-10 & $\gamma$=0.2, C=1, K=0 & 0.8781 & 50.1\% & 0.8791 \\
+1  & $\gamma$=1.0, C=1, K=0   & 0.8806 & 50.6\% & 0.8808 \\
+2  & $\gamma$=0.4, C=3, K=$-$1 & 0.8804 & 50.1\% & 0.8800 \\
+3  & $\gamma$=0.8, C=1, K=0   & 0.8804 & 50.2\% & 0.8798 \\
+4  & $\gamma$=0.6, C=3, K=1   & 0.8803 & 49.6\% & 0.8802 \\
+5  & $\gamma$=0.6, C=1, K=0   & 0.8801 & 50.8\% & 0.8811 \\
+6  & $\gamma$=0.4, C=1, K=0   & 0.8800 & 50.3\% & 0.8797 \\
+7  & $\gamma$=0.6, C=1, K=$-$1 & 0.8800 & 50.5\% & 0.8792 \\
+8  & $\gamma$=0.4, C=1, K=$-$1 & 0.8797 & 50.8\% & 0.8807 \\
+9  & $\gamma$=0.6, C=2, K=1   & 0.8788 & 50.0\% & 0.8793 \\
+10 & $\gamma$=0.2, C=1, K=0   & 0.8781 & 50.1\% & 0.8791 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_3}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig16.png}
 \caption{Visual comparison of the top 10 configurations by Test ROC AUC and fraud detection rate.}
 \label{fig:gnn-top10-visual}
 \end{figure}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Bottom 5 Split GNN Configurations}
 \label{tab:gnn-bottom5}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{cp{4.5cm}rrrr}
+\begin{tabularx}{\textwidth}{cXcccc}
 \toprule
 \textbf{Rank} & \textbf{Configuration} & \textbf{Test AUC} & \textbf{TPR @ 5\% FPR} & \textbf{Fraud Prec.} & \textbf{Fraud Recall} \\
 \midrule
@@ -586,58 +598,59 @@ $C = 3$ (4 bands) & 0.8665 & 0.8804 & 0.8472 & 0.010 & 20 \\
 42 & $\gamma$=0.2, C=3, K=$-$1 & 0.8480 & 34.9\% & 0.09 & 0.35 \\
 43 & $\gamma$=0.6, C=3, K=$-$1 & 0.8472 & 38.6\% & 0.10 & 0.39 \\
 44 & $\gamma$=0.8, C=2, K=$-$1 & 0.8527 & 41.4\% & 0.11 & 0.41 \\
-45 & $\gamma$=0.2, C=3, K=2 & 0.8508 & 47.8\% & 0.12 & 0.48 \\
+45 & $\gamma$=0.2, C=3, K=2    & 0.8508 & 47.8\% & 0.12 & 0.48 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 \subsubsection{Cross-Version Fairness Ablation}
 
 The cross-version fairness study evaluates the GraphSAGE architecture (hidden\_dim=128) across six data distribution variants (Version 0 through Version V).
 
-\begin{landscape}
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Experiment Configuration and Dataset Characteristics Across All Six Data Versions}
 \label{tab:gnn-version-configs}
-\small
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{lrrrrrrr}
+\footnotesize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
 \toprule
 \textbf{Version} & \textbf{Edges} & \textbf{Train} & \textbf{Val} & \textbf{Test} & \textbf{Train Fraud} & \textbf{Train Legit} & \textbf{Fraud Wt.} \\
 \midrule
 V0 (Base) & 14,491,868 & 675,666 & 119,324 & 205,010 & 6,740 & 668,926 & 99.25 \\
-V I & 14,479,509 & 675,668 & 119,322 & 205,010 & 6,740 & 668,928 & 99.25 \\
-V II & 14,547,755 & 675,666 & 119,324 & 205,010 & 6,740 & 668,926 & 99.25 \\
-V III & 14,541,726 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
-V IV & 14,541,548 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
-V V & 14,542,330 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+V I        & 14,479,509 & 675,668 & 119,322 & 205,010 & 6,740 & 668,928 & 99.25 \\
+V II       & 14,547,755 & 675,666 & 119,324 & 205,010 & 6,740 & 668,926 & 99.25 \\
+V III      & 14,541,726 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+V IV       & 14,541,548 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
+V V        & 14,542,330 & 610,832 & 147,496 & 241,672 & 7,036 & 603,796 & 85.82 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
-\end{landscape}
 
 \subsubsection{Resampling Strategy Ablation}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Resampling Experiment Configuration Comparison}
 \label{tab:gnn-resample-config}
 \small
-\begin{tabularx}{0.95\textwidth}{lXX}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 \textbf{Parameter} & \textbf{Baseline} & \textbf{Resampling Experiment} \\
 \midrule
-Architecture & GraphSAGE & GraphSAGE \\
-Hidden Dimension & 128 & 128 \\
-Data Version & V0 (Base) & V0 (Base) \\
-Train / Val / Test Split & 675,666 / 119,323 / 205,011 & 675,666 / 119,323 / 205,011 \\
-Split Strategy & Temporal & Temporal \\
-Graph Nodes & 1,000,047 & 1,000,047 \\
-Class Weight (Fraud) & 96.53 & 10.00 \\
-Class Weight (Legitimate) & 1.00 & 0.05 \\
-Weight Strategy & Inverse Frequency & ADASYN-Informed \\
-Training Sampler & Standard & WeightedRandomSampler \\
+Architecture              & GraphSAGE           & GraphSAGE \\
+Hidden Dimension          & 128                 & 128 \\
+Data Version              & V0 (Base)           & V0 (Base) \\
+Train / Val / Test Split  & 675,666 / 119,323 / 205,011 & 675,666 / 119,323 / 205,011 \\
+Split Strategy            & Temporal            & Temporal \\
+Graph Nodes               & 1,000,047           & 1,000,047 \\
+Class Weight (Fraud)      & 96.53               & 10.00 \\
+Class Weight (Legitimate) & 1.00                & 0.05 \\
+Weight Strategy           & Inverse Frequency   & ADASYN-Informed \\
+Training Sampler          & Standard            & WeightedRandomSampler \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -662,17 +675,18 @@ The comparative analysis reveals that the classical GraphSAGE model outperforms 
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{GraphSAGE vs.\ QGNN Best Configuration Comparison}
 \label{tab:gnn-sage-vs-qgnn}
 \small
-\begin{tabularx}{0.8\textwidth}{Xrrr}
+\begin{tabularx}{\textwidth}{Xccc}
 \toprule
 \textbf{Metric} & \textbf{GraphSAGE (Best)} & \textbf{QGNN (Best)} & \textbf{Difference} \\
 \midrule
-ROC AUC & 0.8859 & 0.8769 & $-$0.0090 \\
-TPR @ 5\% FPR & 52.54\% & 49.24\% & $-$3.30\% \\
-Fraud Recall & 53\% & 49\% & $-$4\% \\
-True Positives & 1,512 & 1,417 & $-$95 \\
+ROC AUC         & 0.8859  & 0.8769  & $-$0.0090 \\
+TPR @ 5\% FPR   & 52.54\% & 49.24\% & $-$3.30\% \\
+Fraud Recall    & 53\%    & 49\%    & $-$4\% \\
+True Positives  & 1,512   & 1,417   & $-$95 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -681,26 +695,26 @@ True Positives & 1,512 & 1,417 & $-$95 \\
 
 Based on the comprehensive analysis of 45 experiments, the recommended optimal configuration for the Split GNN architecture is $C = 1$, $K = 0$, with $\gamma_{\text{edge}}$ in the range $[0.4, 1.0]$. This configuration achieves the highest peak AUC of 0.8806 and the most robust average performance across $\gamma$ values. The simplicity of $C = 1$ (only 2 wavelet bands) is a significant practical advantage, reducing memory usage by approximately 60\% compared to $C = 3$ while simultaneously improving performance.
 
-\begin{landscape}
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Best Split GNN Configuration per $\gamma_{\text{edge}}$ --- Detailed Classification Report}
 \label{tab:gnn-split-classification}
-\small
-\setlength{\tabcolsep}{8pt}
-\begin{tabularx}{\linewidth}{cXrrrrrrrrr}
+\footnotesize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{ccccccccccc}
 \toprule
-$\gamma$ & Best $(C,K)$ & Test AUC & Thr. & Leg.\ P & Leg.\ R & Fr.\ P & Fr.\ R & Fr.\ F1 & TP & FN \\
+$\gamma$ & Best $(C,K)$ & Test AUC & Threshold & Leg.\ Prec. & Leg.\ Rec. & Fraud Prec. & Fraud Rec. & Fraud F1 & TP & FN \\
 \midrule
-0.2 & C=1, K=0 & 0.8781 & 0.5331 & 0.99 & 0.95 & 0.12 & 0.50 & 0.19 & 1,442 & 1,436 \\
+0.2 & C=1, K=0   & 0.8781 & 0.5331 & 0.99 & 0.95 & 0.12 & 0.50 & 0.19 & 1,442 & 1,436 \\
 0.4 & C=3, K=$-$1 & 0.8804 & 0.5220 & 0.99 & 0.95 & 0.12 & 0.50 & 0.20 & 1,443 & 1,435 \\
-0.6 & C=3, K=1 & 0.8803 & 0.5244 & 0.99 & 0.95 & 0.12 & 0.50 & 0.20 & 1,429 & 1,449 \\
-0.8 & C=1, K=0 & 0.8804 & 0.5085 & 0.99 & 0.95 & 0.13 & 0.50 & 0.20 & 1,445 & 1,433 \\
-1.0 & C=1, K=0 & 0.8806 & 0.5121 & 0.99 & 0.95 & 0.13 & 0.51 & 0.20 & 1,456 & 1,422 \\
+0.6 & C=3, K=1   & 0.8803 & 0.5244 & 0.99 & 0.95 & 0.12 & 0.50 & 0.20 & 1,429 & 1,449 \\
+0.8 & C=1, K=0   & 0.8804 & 0.5085 & 0.99 & 0.95 & 0.13 & 0.50 & 0.20 & 1,445 & 1,433 \\
+1.0 & C=1, K=0   & 0.8806 & 0.5121 & 0.99 & 0.95 & 0.13 & 0.51 & 0.20 & 1,456 & 1,422 \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
-\end{landscape}
 
 \subsection{Cross-Version Fairness Results}
 
@@ -708,42 +722,42 @@ The cross-version evaluation reveals substantial variation in model performance 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_16}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig17.png}
 \caption{Test ROC AUC comparison across all six data versions. The dashed blue line represents the base version benchmark (AUC = 0.8859).}
 \label{fig:gnn-fig16}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_17}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig18.png}
 \caption{True Positive Rate (TPR) at 5\% FPR threshold across all six data versions.}
 \label{fig:gnn-fig17}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_18}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig19.png}
 \caption{Confusion matrix components (TP, FN, FP) at 5\% FPR threshold across all six versions.}
 \label{fig:gnn-fig18}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_19}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig20.png}
 \caption{Generalization gap (Val AUC minus Test AUC) across all six data versions. Green bars indicate minimal overfitting (gap $\leq$ 0.02), orange bars indicate moderate overfitting (0.02--0.05), and red bars indicate severe overfitting (gap $>$ 0.05).}
 \label{fig:gnn-fig19}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.75\textwidth]{figure_20}
+\includegraphics[width=0.75\textwidth]{images/gnn_fig21.png}
 \caption{Multi-metric radar chart comparing all six data versions across five key performance dimensions.}
 \label{fig:gnn-fig20}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_21}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig22.png}
 \caption{Performance heatmap showing relative performance (green = best, red = worst) across all metrics and versions.}
 \label{fig:gnn-fig21}
 \end{figure}
@@ -764,60 +778,61 @@ The resampling approach did not achieve the desired improvement over the baselin
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Comprehensive Performance Comparison between Baseline and Resampling}
 \label{tab:gnn-resample-results}
 \small
-\begin{tabularx}{0.9\textwidth}{Xrr}
+\begin{tabularx}{\textwidth}{Xcc}
 \toprule
 \textbf{Metric} & \textbf{Baseline (No Resampling)} & \textbf{ADASYN + Weighted Sampler} \\
 \midrule
-ROC AUC & 0.8859 & 0.8748 \\
-Operating Threshold & 0.7621 & 0.9944 \\
-FPR at Threshold & 4.98\% & 5.00\% \\
+ROC AUC         & 0.8859  & 0.8748 \\
+Threshold & 0.7621  & 0.9944 \\
+FPR at Threshold & 4.98\%  & 5.00\% \\
 TPR at Threshold & 52.54\% & 50.00\% \\
-Fraud Precision & 0.13 & 0.12 \\
-Fraud Recall & 0.53 & 0.50 \\
-Fraud F1-Score & 0.21 & 0.20 \\
-Accuracy & 94\% & 94\% \\
-True Negatives (TN) & 192,065 & 192,026 \\
-False Positives (FP) & 10,068 & 10,107 \\
-False Negatives (FN) & 1,366 & 1,439 \\
-True Positives (TP) & 1,512 & 1,439 \\
+Fraud Precision  & 0.13    & 0.12 \\
+Fraud Recall     & 0.53    & 0.50 \\
+Fraud F1-Score   & 0.21    & 0.20 \\
+Accuracy         & 94\%    & 94\% \\
+True Negatives  & 192,065 & 192,026 \\
+False Positives & 10,068  & 10,107 \\
+False Negatives & 1,366   & 1,439 \\
+True Positives  & 1,512   & 1,439 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_22}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig23.png}
 \caption{Train+Val Class Distribution (Left) and Class Weighting Strategy Comparison (Right).}
 \label{fig:gnn-fig22}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_23}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig24.png}
 \caption{Confusion Matrix Comparison --- Baseline (Left) vs.\ ADASYN + Weighted Sampler (Right).}
 \label{fig:gnn-fig23}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_24}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig25.png}
 \caption{Multi-Dimensional Performance Profile --- Baseline vs.\ ADASYN + Weighted Sampler across five key metrics.}
 \label{fig:gnn-fig24}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_25}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig26.png}
 \caption{Performance Delta Analysis --- Change in each metric when switching from baseline to resampling approach.}
 \label{fig:gnn-fig25}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_26}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig27.png}
 \caption{Side-by-Side Metric Comparison --- Baseline vs.\ ADASYN + Weighted Sampler across all key performance indicators.}
 \label{fig:gnn-fig26}
 \end{figure}
@@ -828,34 +843,34 @@ The classification performance results reveal a clear performance hierarchy amon
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Detailed Performance Metrics Comparison (Best Configuration per Architecture)}
 \label{tab:gnn-cross-arch}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{Xrrrr}
+\begin{tabularx}{\textwidth}{Xcccc}
 \toprule
 \textbf{Metric} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} & \textbf{Improvement} \\
 \midrule
-AUC-ROC & 0.9538 & 0.9582 & 0.9954 & +4.16\% \\
-AUC-PR & 0.8435 & 0.8914 & 0.9891 & +14.56\% \\
-Accuracy & 0.9495 & 0.9510 & 0.9949 & +4.54\% \\
+AUC-ROC   & 0.9538 & 0.9582 & 0.9954 & +4.16\% \\
+AUC-PR    & 0.8435 & 0.8914 & 0.9891 & +14.56\% \\
+Accuracy  & 0.9495 & 0.9510 & 0.9949 & +4.54\% \\
 Precision & 0.9545 & 0.9556 & 0.9948 & +4.03\% \\
-Recall & 0.9445 & 0.9459 & 0.9950 & +5.05\% \\
-F1-Score & 0.9495 & 0.9507 & 0.9949 & +4.54\% \\
+Recall    & 0.9445 & 0.9459 & 0.9950 & +5.05\% \\
+F1-Score  & 0.9495 & 0.9507 & 0.9949 & +4.54\% \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{figure_14}
+\includegraphics[width=0.85\textwidth]{images/gnn_fig28.png}
 \caption{Cross-Architecture Performance Comparison (Grouped Bar Chart).}
 \label{fig:gnn-fig14}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.75\textwidth]{figure_15}
+\includegraphics[width=0.75\textwidth]{images/gnn_fig29.png}
 \caption{Architecture Performance Radar Chart.}
 \label{fig:gnn-fig15}
 \end{figure}
@@ -864,22 +879,22 @@ F1-Score & 0.9495 & 0.9507 & 0.9949 & +4.54\% \\
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Architectural Design Comparison Across All Three Models}
 \label{tab:gnn-arch-comparison}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{lXXX}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 \textbf{Feature} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} \\
 \midrule
-Core Mechanism & Neighborhood Sampling & Variational Quantum Circuit & Edge Classification + Wavelet \\
-Feature Aggregation & Mean Pooling & Quantum Entanglement & Beta Wavelet Transform \\
-Input Encoding & Raw Features + MLP & Angle Encoding & Linear Projection \\
-Key Innovation & Scalable Sampling & Quantum Feature Maps & Graph Splitting + Filtering \\
-Graph Type & Heterogeneous & Heterogeneous & Heterogeneous \\
-Loss Function & Cross-Entropy & Cross-Entropy & Multi-Task (Node + Edge) \\
-Output Layer & MLP Classifier & Measurement + MLP & Residual Fusion + MLP \\
-Quantum Required & No & Yes (Simulator) & No \\
+Core Mechanism      & Neighborhood Sampling    & Variational Quantum Circuit & Edge Classification + Wavelet \\
+Feature Aggregation & Mean Pooling             & Quantum Entanglement        & Beta Wavelet Transform \\
+Input Encoding      & Raw Features + MLP       & Angle Encoding              & Linear Projection \\
+Key Innovation      & Scalable Sampling        & Quantum Feature Maps        & Graph Splitting + Filtering \\
+Graph Type          & Heterogeneous            & Heterogeneous               & Heterogeneous \\
+Loss Function       & Cross-Entropy            & Cross-Entropy               & Multi-Task (Node + Edge) \\
+Output Layer        & MLP Classifier           & Measurement + MLP           & Residual Fusion + MLP \\
+Quantum Required    & No                       & Yes (Simulator)             & No \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -888,20 +903,20 @@ Quantum Required & No & Yes (Simulator) & No \\
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{Practical Deployment Considerations}
 \label{tab:gnn-deployment}
 \small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\textwidth}{lXXX}
+\begin{tabularx}{\textwidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 \textbf{Consideration} & \textbf{GraphSAGE} & \textbf{Quantum GNN} & \textbf{Split GNN} \\
 \midrule
-Training Speed & Fast & Slow (Quantum Sim.) & Moderate \\
-Hyperparameter Tuning & Simple (2 configs) & Moderate (5 configs) & Extensive (60 configs) \\
-Hardware Requirements & Standard GPU & Standard GPU + Qiskit & Standard GPU \\
-Scalability & Excellent & Limited & Good \\
-Best Use Case & Real-time Detection & Research Exploration & High-Accuracy Detection \\
-Deployment Readiness & Production-Ready & Experimental & Production-Ready \\
+Training Speed         & Fast                    & Slow (Quantum Sim.)    & Moderate \\
+Hyperparameter Tuning  & Simple (2 configs)      & Moderate (5 configs)   & Extensive (45 configs) \\
+Hardware Requirements  & Standard GPU            & Standard GPU + Qiskit  & Standard GPU \\
+Scalability            & Excellent               & Limited                & Good \\
+Best Use Case          & Real-time Detection     & Research Exploration   & High-Accuracy Detection \\
+Deployment Readiness   & Production-Ready        & Experimental           & Production-Ready \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -912,37 +927,39 @@ The following tables present subgroup fairness analysis, showing TPR by age grou
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{True Positive Rate (TPR) by Age Group at 5\% FPR}
 \label{tab:gnn-fairness-age}
 \small
-\begin{tabularx}{0.85\textwidth}{lrrrr}
+\begin{tabularx}{0.85\textwidth}{XcccS[table-format=2.1]}
 \toprule
-\textbf{Age Group} & \textbf{Total} & \textbf{Fraud} & \textbf{TP} & \textbf{TPR} \\
+\textbf{Age Group} & {\textbf{Total}} & {\textbf{Fraud}} & {\textbf{TP}} & {\textbf{TPR (\%)}} \\
 \midrule
-18--29 & 42,316 & 1,245 & 689 & 55.3\% \\
-30--39 & 58,421 & 892 & 467 & 52.4\% \\
-40--49 & 45,112 & 412 & 201 & 48.8\% \\
-50--59 & 32,876 & 211 & 103 & 48.8\% \\
-60--69 & 18,543 & 98 & 41 & 41.8\% \\
-70+ & 7,743 & 20 & 11 & 55.0\% \\
+18--29 & 42,316 & 1,245 & 689 & 55.3 \\
+30--39 & 58,421 & 892   & 467 & 52.4 \\
+40--49 & 45,112 & 412   & 201 & 48.8 \\
+50--59 & 32,876 & 211   & 103 & 48.8 \\
+60--69 & 18,543 & 98    & 41  & 41.8 \\
+70+    & 7,743  & 20    & 11  & 55.0 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \begin{table}[H]
 \centering
+\tablestrut
 \caption{True Positive Rate (TPR) by Employment Status at 5\% FPR}
 \label{tab:gnn-fairness-employment}
 \small
-\begin{tabularx}{0.85\textwidth}{lrrrr}
+\begin{tabularx}{0.85\textwidth}{XcccS[table-format=2.1]}
 \toprule
-\textbf{Employment Status} & \textbf{Total} & \textbf{Fraud} & \textbf{TP} & \textbf{TPR} \\
+\textbf{Employment Status} & {\textbf{Total}} & {\textbf{Fraud}} & {\textbf{TP}} & {\textbf{TPR (\%)}} \\
 \midrule
-Employed & 89,234 & 1,012 & 538 & 53.2\% \\
-Self-employed & 34,567 & 567 & 291 & 51.3\% \\
-Unemployed & 45,123 & 823 & 441 & 53.6\% \\
-Student & 21,345 & 312 & 158 & 50.6\% \\
-Retired & 14,742 & 164 & 84 & 51.2\% \\
+Employed      & 89,234 & 1,012 & 538 & 53.2 \\
+Self-employed & 34,567 & 567   & 291 & 51.3 \\
+Unemployed    & 45,123 & 823   & 441 & 53.6 \\
+Student       & 21,345 & 312   & 158 & 50.6 \\
+Retired       & 14,742 & 164   & 84  & 51.2 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -973,4 +990,3 @@ The findings from this thesis have several important implications for the design
 \item \textbf{No Edge Features:} The current implementation treats all edges identically. Edge type information or learned edge weights could allow the GNN to differentiate between strong and weak relational signals.
 \item \textbf{Subgroup Fairness Data:} The subgroup fairness analysis uses proxy features (age bucket, employment status) which may not fully capture the demographic groups of interest for regulatory compliance.
 \item \textbf{Computational Cost:} The 45-experiment Split GNN hyperparameter study requires significant computational resources, which may limit applicability in resource-constrained environments.
-\end{enumerate}
