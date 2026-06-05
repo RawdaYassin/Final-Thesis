@@ -49,21 +49,24 @@ The Leaky Integrate-and-Fire (LIF) model, which we adopt for the present work, s
 \caption{Comparison of Biological Neuron Models}
 \label{tab:snn-neuron-comparison}
 \small
-\begin{tabularx}{\textwidth}{>{\RaggedRight\arraybackslash}p{3.2cm}XXXX}
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{>{\RaggedRight\arraybackslash}p{2.9cm}XXXX}
 \toprule
-\textbf{Property} & \textbf{Hodgkin--Huxley} & \textbf{Izhikevich} & \textbf{Spike Response} & \textbf{LIF} \\
+\textbf{Property} & \makecell{\textbf{Hodgkin--}\\\textbf{Huxley}} & \textbf{Izhikevich} & \makecell{\textbf{Spike}\\\textbf{Response}} & \textbf{LIF} \\
 \midrule
 Equations & 4 coupled ODEs & 2 ODEs + reset & Kernel sums & 1 ODE + reset \\
 Variables & $V, m, h, n$ & $v, u$ & $V(t)$ & $V(t)$ \\
 Firing patterns & Squid axon only & 20+ types & Configurable & Regular spiking \\
 FLOPs/step & $\sim$1{,}200 & $\sim$13 & Variable & $\sim$5 \\
 Analytical tractability & Very low & Low & Moderate & High \\
-Biophysical basis & Ion channel & Phenomeno- & Kernel- & Circuit \
-& kinetics & logical & based & analogy \\
+Biophysical basis & Ion channel kinetics & Phenomenological & Kernel-based & Circuit analogy \\
 GPU parallelism & Moderate & Good & Moderate & Excellent \\
 Suitable for DL & No & Rarely & Occasionally & Yes (snnTorch) \\
 \bottomrule
 \end{tabularx}
+\endgroup
 \end{table}
 
 \subsection{Mathematical Formulation of the LIF Neuron}
@@ -121,9 +124,12 @@ Table~\ref{tab:snn-encoding-comparison} summarizes the key properties of these f
 \caption{Comparison of Spike Encoding Schemes}
 \label{tab:snn-encoding-comparison}
 \small
-\begin{tabularx}{\textwidth}{lXXXX}
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{>{\RaggedRight\arraybackslash}p{3.2cm}XXXX}
 \toprule
-\textbf{Property} & \textbf{Rate Coding} & \textbf{Latency Coding} & \textbf{Delta Modulation} & \textbf{Phase Coding} \\
+\textbf{Property} & \makecell{\textbf{Rate}\\\textbf{Coding}} & \makecell{\textbf{Latency}\\\textbf{Coding}} & \makecell{\textbf{Delta Mod}\\\textbf{ulation}} & \makecell{\textbf{Phase}\\\textbf{Coding}} \\
 \midrule
 Information carrier & Spike frequency & Spike timing & Spike on change & Relative phase \\
 Input domain & Any real-valued & Any real-valued & Time-varying signals & Oscillatory systems \\
@@ -134,6 +140,7 @@ Implementation complexity & Low & Moderate & Moderate & High \\
 Spike efficiency & Low (many spikes) & High (few spikes) & Variable & Variable \\
 \bottomrule
 \end{tabularx}
+\endgroup
 \end{table}
 
 \subsection{Surrogate Gradient Descent and BPTT}
@@ -313,11 +320,11 @@ An important consideration is that the spike counts are inherently non-negative 
     arr/.default=gray
 ]
 % Input spike trains
-\node[block=green] (s0) at (0, 1.2) {Output Neuron 0\(legitimate)};
-\node[block=red] (s1) at (0,-1.2) {Output Neuron 1\(fraud)};
+\node[block=green] (s0) at (0, 1.2) {Output Neuron 0 (legitimate)};
+\node[block=red] (s1) at (0,-1.2) {Output Neuron 1 (fraud)};
 % Spike counts
-\node[block=purple, right=2.5cm of s0] (c0) {Spike Count $C_0$\$\sum_{t=1}^{T} S_0^{(L)}[t]$};
-\node[block=purple, right=2.5cm of s1] (c1) {Spike Count $C_1$\$\sum_{t=1}^{T} S_1^{(L)}[t]$};
+\node[block=purple, right=2.5cm of s0] (c0) {Spike Count $C_0 = \sum_{t=1}^{T} S_0^{(L)}[t]$};
+\node[block=purple, right=2.5cm of s1] (c1) {Spike Count $C_1 = \sum_{t=1}^{T} S_1^{(L)}[t]$};
 % Softmax
 \node[block=orange, right=2.5cm of $(c0)!0.5!(c1)$] (sm) {Softmax\\$\frac{e^{C_1}}{e^{C_0}+e^{C_1}}$};
 % Output
@@ -365,6 +372,7 @@ The asymmetric dropout schedule---30\% for the first two layers and 20\% for lay
 
 \begin{figure}[H]
 \centering
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
     >=Stealth,
     layer/.style={draw, rounded corners, minimum height=1.4cm, minimum width=2.8cm, align=center, font=\small, fill=#1!12, draw=#1!50, thick},
@@ -373,18 +381,18 @@ The asymmetric dropout schedule---30\% for the first two layers and 20\% for lay
     drop/.style={font=\tiny, text=gray!60!black}
 ]
 % Input
-\node[layer=teal] (input) at (0,0) {Input Features\$\mathbf{X} \in \mathbb{R}^{N \times D}$};
+\node[layer=teal] (input) at (0,0) {Input Features \\ $\mathbf{X} \in \mathbb{R}^{N \times D}$};
 % Rate Coding
-\node[layer=green, right=1.2cm of input] (rc) {Rate Coding\Bernoulli($\hat{x}_{i,j}$)};
+\node[layer=green, right=1.2cm of input] (rc) {Rate Coding \\ Bernoulli($\hat{x}_{i,j}$)};
 % Layers
-\node[layer=blue, right=1.2cm of rc] (l1) {Linear+LIF\512, $\beta$=lrn, $V_{\text{th}}$=1.0};
-\node[layer=blue, right=1.2cm of l1] (l2) {Linear+LIF\256, $\beta$=lrn, $V_{\text{th}}$=1.0};
-\node[layer=blue, right=1.2cm of l2] (l3) {Linear+LIF\128, $\beta$=lrn, $V_{\text{th}}$=1.0};
-\node[layer=blue, right=1.2cm of l3] (l4) {Linear+LIF\64, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of rc] (l1) {Linear+LIF \\ 512, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l1] (l2) {Linear+LIF \\ 256, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l2] (l3) {Linear+LIF \\ 128, $\beta$=lrn, $V_{\text{th}}$=1.0};
+\node[layer=blue, right=1.2cm of l3] (l4) {Linear+LIF \\ 64, $\beta$=lrn, $V_{\text{th}}$=1.0};
 % Output
-\node[layer=red!70!black, right=1.2cm of l4] (out) {Linear Output\2 classes};
+\node[layer=red!70!black, right=1.2cm of l4] (out) {Linear Output \\ 2 classes};
 % Decode
-\node[layer=orange, right=1.2cm of out] (dec) {Spike Count\+ Softmax};
+\node[layer=orange, right=1.2cm of out] (dec) {Spike Count \\ Softmax};
 % Arrows
 \draw[arr] (input) -- (rc);
 \draw[arr] (rc) -- node[above, font=\tiny]{$T{=}50$ steps} (l1);
@@ -396,6 +404,7 @@ The asymmetric dropout schedule---30\% for the first two layers and 20\% for lay
 % Bounding box
 \node[draw=blue!40, dashed, rounded corners, inner sep=6pt, fit=(l1)(l4), label={[font=\tiny, blue!60]above:Four LIF hidden layers}] {};
 \end{tikzpicture}
+}
 \caption{FraudSNN\_SuperDeep architecture diagram. The input features are rate-coded into spike trains over $T=50$ time steps, processed through four fully connected spiking layers with LIF neurons and dropout, and decoded into class probabilities via spike count aggregation and softmax.}
 \label{fig:snn-architecture-fig}
 \end{figure}
@@ -536,11 +545,12 @@ The ensemble search evaluates each configuration on the validation set and ranks
 
 \begin{figure}[H]
 \centering
+\resizebox{0.95\linewidth}{!}{%
 \begin{tikzpicture}[
     >=Stealth,
-    model/.style={draw, rounded corners, minimum height=1.1cm, minimum width=2.4cm, align=center, font=\small, fill=#1!12, draw=#1!50, thick},
+    model/.style={draw, rounded corners, minimum height=1.1cm, minimum width=2.4cm, align=center, font=\footnotesize, fill=#1!12, draw=#1!50, thick},
     model/.default=blue,
-    vote/.style={draw, diamond, minimum height=1.5cm, minimum width=2.2cm, align=center, font=\small, fill=#1!15, draw=#1!50, thick, inner sep=2pt},
+    vote/.style={draw, diamond, minimum height=1.5cm, minimum width=2.2cm, align=center, font=\footnotesize, fill=#1!15, draw=#1!50, thick, inner sep=2pt},
     vote/.default=orange,
     arr/.style={->, thick, gray!70!black},
     lbl/.style={font=\tiny, text=gray!70!black}
@@ -571,6 +581,7 @@ The ensemble search evaluates each configuration on the validation set and ranks
 % Arrow to output
 \draw[arr] (search.east) -- (out.west);
 \end{tikzpicture}
+}
 \caption{Ensemble voting framework. Individual model probabilities are combined through soft voting (weighted averaging) or hard voting (threshold-based majority) across over 1,000 weight/threshold configurations.}
 \label{fig:snn-ensemble}
 \end{figure}
@@ -618,7 +629,8 @@ The BAF Dataset Suite provides six data variants that introduce controlled distr
   & SNN & 78.24 & 38.67 & 5.00 & 8.12 & 93.45 \\
   & Random Forest & 80.15 & 42.31 & 5.00 & 8.85 & 93.72 \\
   & LightGBM & 83.56 & 48.93 & 5.00 & 10.12 & 94.15 \\
-\midrule{3}{*}{Variant V}
+\midrule
+\multirow{3}{*}{Variant V}
   & SNN & 84.32 & 49.21 & 5.00 & 10.15 & 94.21 \\
   & Random Forest & 82.78 & 46.52 & 5.00 & 9.67 & 93.98 \\
   & LightGBM & 86.91 & 54.36 & 5.00 & 11.18 & 94.62 \\
