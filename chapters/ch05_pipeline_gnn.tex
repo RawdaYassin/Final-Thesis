@@ -6,6 +6,7 @@
 % =====================================================================
 \chapter{Pipeline I: Graph Neural Network--Based Fraud Detection}
 \label{ch:gnn}
+\label{ch:pipeline-gnn}
 
 % --- Global table formatting helpers ---
 \newcommand{\tablestrut}{\renewcommand{\arraystretch}{1.18}}
@@ -990,3 +991,4 @@ The findings from this thesis have several important implications for the design
 \item \textbf{No Edge Features:} The current implementation treats all edges identically. Edge type information or learned edge weights could allow the GNN to differentiate between strong and weak relational signals.
 \item \textbf{Subgroup Fairness Data:} The subgroup fairness analysis uses proxy features (age bucket, employment status) which may not fully capture the demographic groups of interest for regulatory compliance.
 \item \textbf{Computational Cost:} The 45-experiment Split GNN hyperparameter study requires significant computational resources, which may limit applicability in resource-constrained environments.
+\end{enumerate}
