@@ -312,6 +312,7 @@ An important consideration is that the spike counts are inherently non-negative 
 
 \begin{figure}[H]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
     >=Stealth,
     block/.style={draw, rounded corners, minimum height=1cm, minimum width=2.2cm, align=center, font=\small, fill=#1!15, draw=#1!60},
@@ -336,6 +337,7 @@ An important consideration is that the spike counts are inherently non-negative 
 \draw[arr=purple] (c1) -- (sm);
 \draw[arr=orange] (sm) -- (out);
 \end{tikzpicture}
+}
 \caption{Spike count decoding and probability extraction. The output spike trains from the two output neurons are aggregated over $T$ time steps, and the softmax function converts the spike counts into a fraud probability estimate.}
 \label{fig:snn-output-decoding-fig}
 \end{figure}
@@ -561,10 +563,10 @@ The ensemble search evaluates each configuration on the validation set and ranks
 \node[model=red!70!black] (lgbm) at (-3,-0.6) {LightGBM};
 \node[model=purple] (if) at (-3,-1.9) {Isolation Forest};
 % Voting strategies
-\node[vote=teal] (soft) at (3, 1.2) {Soft Voting\$\sum w_m p_m$};
-\node[vote=purple] (hard) at (3,-1.2) {Hard Voting\majority};
+\node[vote=teal] (soft) at (3, 1.2) {Soft Voting\\$\sum w_m p_m$};
+\node[vote=purple] (hard) at (3,-1.2) {Hard Voting\\majority};
 % Search
-\node[draw, rounded corners, minimum height=0.9cm, minimum width=2.8cm, align=center, font=\small, fill=yellow!10, draw=yellow!60!black, thick] (search) at (8, 0) {1,000+ Configs\Weight/Threshold Grid};
+\node[draw, rounded corners, minimum height=0.9cm, minimum width=2.8cm, align=center, font=\small, fill=yellow!10, draw=yellow!60!black, thick] (search) at (8, 0) {1,000+ Configs\\Weight/Threshold Grid};
 % Output
 \node[draw, rounded corners, minimum height=1cm, minimum width=2cm, align=center, font=\small, fill=red!10, draw=red!50!black, thick] (out) at (12.5, 0) {$\hat{y}_{\text{ensemble}}$};
 % Arrows from models

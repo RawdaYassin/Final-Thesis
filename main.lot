@@ -1,0 +1,71 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {2.1}{\ignorespaces Representative performance of fraud detection approaches on the BAF base dataset. Entries marked ``---'' indicate metrics not reported in the original study.}}{45}{table.caption.13}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces Stakeholder Analysis}}{52}{table.caption.14}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Functional Requirements}}{53}{table.caption.15}%
+\contentsline {table}{\numberline {3.3}{\ignorespaces Non-Functional Requirements}}{54}{table.caption.16}%
+\contentsline {table}{\numberline {3.4}{\ignorespaces Data Requirements}}{55}{table.caption.17}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Complete Node Type Catalog}}{59}{table.caption.19}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Feature Bucketing Strategies}}{60}{table.caption.20}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces Graph Statistics Summary}}{61}{table.caption.21}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces Technology Stack}}{67}{table.caption.22}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces GNNFraudDetector Layer Architecture}}{71}{table.caption.24}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Split GNN Fixed Hyperparameters}}{75}{table.caption.27}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces GraphSAGE Training Hyperparameters}}{76}{table.caption.28}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces GraphSAGE Experiment Configurations}}{77}{table.caption.29}%
+\contentsline {table}{\numberline {5.5}{\ignorespaces QGNN Experiment Configurations}}{78}{table.caption.30}%
+\contentsline {table}{\numberline {5.6}{\ignorespaces Comparison with Published Baselines}}{78}{table.caption.31}%
+\contentsline {table}{\numberline {5.7}{\ignorespaces GraphSAGE Detailed Performance Metrics}}{80}{table.caption.33}%
+\contentsline {table}{\numberline {5.8}{\ignorespaces Confusion Matrix Details for All QGNN Experiments}}{81}{table.caption.37}%
+\contentsline {table}{\numberline {5.9}{\ignorespaces Performance Summary by Wavelet Order}}{83}{table.caption.44}%
+\contentsline {table}{\numberline {5.10}{\ignorespaces Top 10 Split GNN Configurations}}{85}{table.caption.47}%
+\contentsline {table}{\numberline {5.11}{\ignorespaces Bottom 5 Split GNN Configurations}}{85}{table.caption.49}%
+\contentsline {table}{\numberline {5.12}{\ignorespaces Experiment Configuration and Dataset Characteristics Across All Six Data Versions}}{86}{table.caption.50}%
+\contentsline {table}{\numberline {5.13}{\ignorespaces Resampling Experiment Configuration Comparison}}{86}{table.caption.51}%
+\contentsline {table}{\numberline {5.14}{\ignorespaces GraphSAGE vs.\ QGNN Best Configuration Comparison}}{87}{table.caption.52}%
+\contentsline {table}{\numberline {5.15}{\ignorespaces Best Split GNN Configuration per $\gamma _{\text {edge}}$ --- Detailed Classification Report}}{87}{table.caption.53}%
+\contentsline {table}{\numberline {5.16}{\ignorespaces Comprehensive Performance Comparison between Baseline and Resampling}}{91}{table.caption.60}%
+\contentsline {table}{\numberline {5.17}{\ignorespaces Detailed Performance Metrics Comparison (Best Configuration per Architecture)}}{93}{table.caption.66}%
+\contentsline {table}{\numberline {5.18}{\ignorespaces Architectural Design Comparison Across All Three Models}}{95}{table.caption.69}%
+\contentsline {table}{\numberline {5.19}{\ignorespaces Practical Deployment Considerations}}{95}{table.caption.70}%
+\contentsline {table}{\numberline {5.20}{\ignorespaces True Positive Rate (TPR) by Age Group at 5\% FPR}}{96}{table.caption.71}%
+\contentsline {table}{\numberline {5.21}{\ignorespaces True Positive Rate (TPR) by Employment Status at 5\% FPR}}{96}{table.caption.72}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {6.1}{\ignorespaces Comparison of Biological Neuron Models}}{101}{table.caption.73}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces Comparison of Spike Encoding Schemes}}{103}{table.caption.74}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces FraudSNN\_SuperDeep Layer Architecture}}{108}{table.caption.77}%
+\contentsline {table}{\numberline {6.4}{\ignorespaces FraudSNN\_SuperDeep Training Hyperparameters}}{109}{table.caption.79}%
+\contentsline {table}{\numberline {6.5}{\ignorespaces Isolation Forest Configuration}}{110}{table.caption.80}%
+\contentsline {table}{\numberline {6.6}{\ignorespaces Random Forest Configuration}}{111}{table.caption.81}%
+\contentsline {table}{\numberline {6.7}{\ignorespaces LightGBM Configuration}}{111}{table.caption.82}%
+\contentsline {table}{\numberline {6.8}{\ignorespaces Model Performance Across BAF Dataset Variants at 5\% FPR Operating Constraint}}{114}{table.caption.84}%
+\contentsline {table}{\numberline {6.9}{\ignorespaces Individual Model Rankings by Average TPR at 5\% FPR}}{115}{table.caption.85}%
+\contentsline {table}{\numberline {6.10}{\ignorespaces Comparison with CSNPC P200-S20 Architecture}}{120}{table.caption.88}%
+\contentsline {table}{\numberline {6.11}{\ignorespaces Comparison with Traditional ML Baselines on BAF Base Variant}}{121}{table.caption.89}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {7.1}{\ignorespaces Hyperparameter optimization architecture matrix for the VAE and DAE models. All parameters were fixed following grid-search calibration on the validation split.}}{142}{table.caption.98}%
+\contentsline {table}{\numberline {7.2}{\ignorespaces Systematic performance consolidation across modeling paradigms. All metrics are evaluated on the out-of-time test partition (Months 6--7) of Variant I at an approximately 5.00\% FPR operating threshold.}}{144}{table.caption.99}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {8.1}{\ignorespaces Unified Performance Benchmark Across All Three Pipelines (Best Configuration per Pipeline)}}{150}{table.caption.104}%
+\contentsline {table}{\numberline {8.2}{\ignorespaces Architectural Design Comparison Across All Three Pipelines}}{152}{table.caption.105}%
+\contentsline {table}{\numberline {8.3}{\ignorespaces Practical Deployment Considerations Across Pipelines}}{154}{table.caption.106}%
+\contentsline {table}{\numberline {8.4}{\ignorespaces Cross-Version Robustness Summary (ROC AUC Across Six Data Versions)}}{155}{table.caption.107}%
+\contentsline {table}{\numberline {8.5}{\ignorespaces Class Imbalance Handling Strategies Across Pipelines}}{157}{table.caption.108}%
+\contentsline {table}{\numberline {8.6}{\ignorespaces Fairness Comparison: True Positive Rate (TPR) by Age Group at 5\% FPR}}{157}{table.caption.109}%
+\contentsline {table}{\numberline {8.7}{\ignorespaces Fairness Comparison: True Positive Rate (TPR) by Employment Status at 5\% FPR}}{158}{table.caption.110}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {B.1}{\ignorespaces Computational Environment}}{171}{table.caption.111}%
+\contentsline {table}{\numberline {B.2}{\ignorespaces Approximate Training Time per Experiment (NVIDIA A100)}}{172}{table.caption.112}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {C.1}{\ignorespaces Generative AI Tools Used in This Thesis}}{175}{table.caption.113}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {D.1}{\ignorespaces Split GNN: Top 5 Hyperparameter Configurations Ranked by Test ROC AUC}}{178}{table.caption.114}%
+\contentsline {table}{\numberline {D.2}{\ignorespaces QGNN Circuit Configuration Sweep Results}}{178}{table.caption.115}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

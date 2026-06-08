@@ -1,30 +1,30 @@
-\documentclass[11pt,a4paper]{article}
+% \documentclass[11pt,a4paper]{article}
 
 % ── Packages ──
-\usepackage{graphicx}
-\usepackage{xcolor}
-\usepackage{geometry}
-\usepackage{amsmath,amssymb}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{adjustbox}
-\usepackage{enumitem}
-\usepackage{hyperref}
-\usepackage{caption}
-\usepackage{float}
-\usepackage{longtable}
+% \usepackage{graphicx}
+% \usepackage{xcolor}
+% \usepackage{geometry}
+% \usepackage{amsmath,amssymb}
+% \usepackage{booktabs}
+% \usepackage{tabularx}
+% \usepackage{adjustbox}
+% \usepackage{enumitem}
+% \usepackage{hyperref}
+% \usepackage{caption}
+% \usepackage{float}
+% \usepackage{longtable}
 
-\geometry{a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+% \geometry{a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
 
-\hypersetup{
-    colorlinks=true,
-    linkcolor=blue,
-    citecolor=darkgray,
-    urlcolor=blue,
-    bookmarks=true,
-    bookmarksnumbered=true,
-    unicode=true
-}
+% \hypersetup{
+%     colorlinks=true,
+%     linkcolor=blue,
+%     citecolor=darkgray,
+%     urlcolor=blue,
+%     bookmarks=true,
+%     bookmarksnumbered=true,
+%     unicode=true
+% }
 
 % Caption style
 \captionsetup{font=small, labelfont=bf, width=\textwidth}
@@ -33,23 +33,25 @@
 \setcounter{secnumdepth}{3}
 
 % Chapter-based equation numbering: (7.1), (7.2), etc.
-\renewcommand{\theequation}{\thesection.\arabic{equation}}
+% \renewcommand{\theequation}{\thesection.\arabic{equation}}
 
 % Chapter-based figure numbering: Figure 7.1, Figure 7.2, etc.
-\renewcommand{\thefigure}{\thesection.\arabic{figure}}
+% \renewcommand{\thefigure}{\thesection.\arabic{figure}}
 
 % Chapter-based table numbering: Table 7.1, Table 7.2, etc.
-\renewcommand{\thetable}{\thesection.\arabic{table}}
+% \renewcommand{\thetable}{\thesection.\arabic{table}}
 
-\begin{document}
+% \begin{document}
 
-\setcounter{section}{6}
+% \setcounter{section}{6}
 
 % ═══════════════════════════════════════════════════════════════
 % CHAPTER 7 — REVISED
 % ═══════════════════════════════════════════════════════════════
 
-\section{Pipeline of Autoencoder: Unsupervised Feature Extraction and Latent Space Topology Manifolds via Variational and Denoising Autoencoders}
+\graphicspath{{images/AE/}{images/}}
+
+\chapter{Pipeline of Autoencoder: Unsupervised Feature Extraction and Latent Space Topology Manifolds via Variational and Denoising Autoencoders}
 
 \subsection{Main Questions and Requirements of the Experiments}
 
@@ -468,4 +470,4 @@ To address this limitation, the core contribution of this methodology relies on 
 
 Finally, our experiments expose a critical paradox regarding synthetic tabular data augmentation inside unsupervised learning loops. While traditional supervised models often utilize algorithms like SMOTE or ADASYN on raw parameters to balance skewed class distributions, executing these transformations within a probabilistic manifold learning environment causes uniform performance degradation. Linear interpolation between minority samples in the original feature space generates synthetic records that map to inconsistent regions of the latent manifold, corrupting the approximate posterior distribution and destabilizing the ELBO optimization. However, applying SMOTE after the feature extraction stage---on the enriched representation space where anomalous signals have already been pre-amplified---preserves the validity of the synthetic samples and yields measurable performance improvements in the DAE pipeline. This finding establishes an important design principle: synthetic oversampling should be applied after, not before, unsupervised representation learning to maintain probabilistic consistency and anomaly detection fidelity.
 
-\end{document}
+% \end{document}
